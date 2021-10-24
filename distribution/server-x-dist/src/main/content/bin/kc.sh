@@ -35,7 +35,7 @@ do
     case "$1" in
       --debug)
           DEBUG_MODE=true
-          if [ -n "$2" ] && [ "$2" = `echo "$2" | sed 's/-//'` ]; then
+          if [ -n "$2" ] && [[ "$2" =~ ^[0-9]+$ ]]; then
               DEBUG_PORT=$2
               shift
           fi
@@ -45,7 +45,7 @@ do
           break
           ;;
       *)
-          if [[ $1 = --* || ! $1 =~ ^-.* ]]; then
+          if [[ $1 = --* || ! $1 =~ ^-D.* ]]; then
             CONFIG_ARGS="$CONFIG_ARGS $1"
             if [[ "$1" = "start-dev" ]]; then
               CONFIG_ARGS="$CONFIG_ARGS --auto-build"
@@ -82,7 +82,11 @@ CLASSPATH_OPTS="$DIRNAME/../lib/quarkus-run.jar"
 JAVA_RUN_OPTS="$JAVA_OPTS $SERVER_OPTS -cp $CLASSPATH_OPTS io.quarkus.bootstrap.runner.QuarkusEntryPoint ${CONFIG_ARGS#?}"
 
 if [[ $CONFIG_ARGS = *"--auto-build"* ]]; then
-    java -Dkc.config.rebuild-and-exit=true $JAVA_RUN_OPTS
+    eval java -Dkc.config.rebuild-and-exit=true $JAVA_RUN_OPTS
+    EXIT_CODE=$?
+    if [ $EXIT_CODE != 0 ]; then
+      exit $EXIT_CODE
+    fi
 fi
 
-exec java ${JAVA_RUN_OPTS}
+eval exec java ${JAVA_RUN_OPTS}

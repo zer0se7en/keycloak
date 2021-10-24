@@ -79,6 +79,7 @@ import org.keycloak.services.clientpolicy.executor.ConsentRequiredExecutorFactor
 import org.keycloak.services.clientpolicy.executor.FullScopeDisabledExecutorFactory;
 import org.keycloak.services.clientpolicy.executor.HolderOfKeyEnforcerExecutorFactory;
 import org.keycloak.services.clientpolicy.executor.PKCEEnforcerExecutorFactory;
+import org.keycloak.services.clientpolicy.executor.RejectResourceOwnerPasswordCredentialsGrantExecutorFactory;
 import org.keycloak.services.clientpolicy.executor.SecureClientAuthenticatorExecutorFactory;
 import org.keycloak.services.clientpolicy.executor.SecureClientUrisExecutorFactory;
 import org.keycloak.services.clientpolicy.executor.SecureLogoutExecutorFactory;
@@ -138,6 +139,7 @@ import static org.keycloak.testsuite.util.ClientPoliciesUtil.createClientUpdateC
 import static org.keycloak.testsuite.util.ClientPoliciesUtil.createClientUpdateSourceGroupsConditionConfig;
 import static org.keycloak.testsuite.util.ClientPoliciesUtil.createClientUpdateSourceHostsConditionConfig;
 import static org.keycloak.testsuite.util.ClientPoliciesUtil.createClientUpdateSourceRolesConditionConfig;
+import static org.keycloak.testsuite.util.ClientPoliciesUtil.createConsentRequiredExecutorConfig;
 import static org.keycloak.testsuite.util.ClientPoliciesUtil.createHolderOfKeyEnforceExecutorConfig;
 import static org.keycloak.testsuite.util.ClientPoliciesUtil.createPKCEEnforceExecutorConfig;
 import static org.keycloak.testsuite.util.ClientPoliciesUtil.createSecureClientAuthenticatorExecutorConfig;
@@ -147,6 +149,7 @@ import static org.keycloak.testsuite.util.ClientPoliciesUtil.createSecureSigning
 import static org.keycloak.testsuite.util.ClientPoliciesUtil.createSecureSigningAlgorithmForSignedJwtEnforceExecutorConfig;
 import static org.keycloak.testsuite.util.ClientPoliciesUtil.createTestRaiseExeptionConditionConfig;
 import static org.keycloak.testsuite.util.ClientPoliciesUtil.createFullScopeDisabledExecutorConfig;
+import static org.keycloak.testsuite.util.ClientPoliciesUtil.createRejectisResourceOwnerPasswordCredentialsGrantExecutorConfig;
 
 import javax.ws.rs.BadRequestException;
 
@@ -2379,7 +2382,7 @@ public class ClientPoliciesTest extends AbstractClientPoliciesTest {
         // register profiles
         String json = (new ClientProfilesBuilder()).addProfile(
                 (new ClientProfileBuilder()).createProfile(PROFILE_NAME, "Test Profile")
-                    .addExecutor(ConsentRequiredExecutorFactory.PROVIDER_ID, null)
+                    .addExecutor(ConsentRequiredExecutorFactory.PROVIDER_ID, createConsentRequiredExecutorConfig(true))
                     .toRepresentation()
                 ).toString();
         updateProfiles(json);
@@ -2394,6 +2397,7 @@ public class ClientPoliciesTest extends AbstractClientPoliciesTest {
                 ).toString();
         updatePolicies(json);
 
+        // Client will be auto-configured to enable consentRequired
         String clientId = generateSuffixedName("aaa-app");
         String cid = createClientByAdmin(clientId, (ClientRepresentation clientRep) -> {
             clientRep.setImplicitFlowEnabled(Boolean.FALSE);
@@ -2402,6 +2406,32 @@ public class ClientPoliciesTest extends AbstractClientPoliciesTest {
         ClientRepresentation clientRep = getClientByAdmin(cid);
         assertEquals(Boolean.TRUE, clientRep.isConsentRequired());
 
+        // Client cannot be updated to disable consentRequired
+        updateClientByAdmin(cid, (ClientRepresentation cRep) -> {
+            cRep.setConsentRequired(Boolean.FALSE);
+        });
+        clientRep = getClientByAdmin(cid);
+        assertEquals(Boolean.TRUE, clientRep.isConsentRequired());
+
+        // Switch auto-configure to false. Auto-configuration won't happen, but validation will still be here, so should not be possible to disable consentRequired
+        json = (new ClientProfilesBuilder()).addProfile(
+                (new ClientProfileBuilder()).createProfile(PROFILE_NAME, "Test Profile")
+                        .addExecutor(ConsentRequiredExecutorFactory.PROVIDER_ID, createConsentRequiredExecutorConfig(false))
+                        .toRepresentation()
+        ).toString();
+        updateProfiles(json);
+
+        // Not possible to register client with consentRequired due the validation
+        try {
+            createClientByAdmin(clientId, (ClientRepresentation clientRep2) -> {
+                clientRep2.setConsentRequired(Boolean.FALSE);
+            });
+            fail();
+        } catch (ClientPolicyException cpe) {
+            assertEquals(Errors.INVALID_REGISTRATION, cpe.getError());
+        }
+
+        // Not possible to update existing client to consentRequired due the validation
         try {
             updateClientByAdmin(cid, (ClientRepresentation cRep) -> {
                 cRep.setConsentRequired(Boolean.FALSE);
@@ -2419,6 +2449,7 @@ public class ClientPoliciesTest extends AbstractClientPoliciesTest {
             });
             clientRep = getClientByAdmin(cid);
             assertEquals(Boolean.TRUE, clientRep.isImplicitFlowEnabled());
+            assertEquals(Boolean.TRUE, clientRep.isConsentRequired());
         } catch (ClientPolicyException cpe) {
             fail();
         }
@@ -2664,6 +2695,47 @@ public class ClientPoliciesTest extends AbstractClientPoliciesTest {
         oauth.openLogout();
 
         assertTrue(driver.getPageSource().contains("Front-channel logout is not allowed for this client"));
+    }
+
+    @Test
+    public void testRejectResourceOwnerCredentialsGrantExecutor() throws Exception {
+
+        String clientId = generateSuffixedName(CLIENT_NAME);
+        String clientSecret = "secret";
+
+        createClientByAdmin(clientId, (ClientRepresentation clientRep) -> {
+            clientRep.setSecret(clientSecret);
+            clientRep.setStandardFlowEnabled(Boolean.TRUE);
+            clientRep.setDirectAccessGrantsEnabled(Boolean.TRUE);
+            clientRep.setPublicClient(Boolean.FALSE);
+        });
+
+        // register profiles
+        String json = (new ClientProfilesBuilder()).addProfile(
+                (new ClientProfileBuilder()).createProfile(PROFILE_NAME, "Purofairu desu")
+                    .addExecutor(RejectResourceOwnerPasswordCredentialsGrantExecutorFactory.PROVIDER_ID,
+                        createRejectisResourceOwnerPasswordCredentialsGrantExecutorConfig(Boolean.TRUE))
+                    .toRepresentation()
+                ).toString();
+        updateProfiles(json);
+
+        // register policies
+        json = (new ClientPoliciesBuilder()).addPolicy(
+                (new ClientPolicyBuilder()).createPolicy(POLICY_NAME, "Porisii desu", Boolean.TRUE)
+                    .addCondition(AnyClientConditionFactory.PROVIDER_ID, 
+                        createAnyClientConditionConfig())
+                    .addProfile(PROFILE_NAME)
+                    .toRepresentation()
+                ).toString();
+        updatePolicies(json);
+
+        oauth.clientId(clientId);
+        OAuthClient.AccessTokenResponse response = oauth.doGrantAccessTokenRequest(clientSecret, TEST_USER_NAME, TEST_USER_PASSWORD, null);
+
+        assertEquals(400, response.getStatusCode());
+        assertEquals(OAuthErrorException.INVALID_GRANT, response.getError());
+        assertEquals("resource owner password credentials grant is prohibited.", response.getErrorDescription());
+
     }
 
     private void openVerificationPage(String verificationUri) {

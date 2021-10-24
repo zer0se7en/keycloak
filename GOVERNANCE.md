@@ -62,7 +62,7 @@ To become a maintainer, you need to demonstrate the following:
 * Ability to collaborate with the team
 * Helping the community
 
-A new maintainer must be proposed by sending an email to the [developer mailing list](https://groups.google.com/forum/#!forum/keycloak-dev).
+A new maintainer must be proposed by sending an email to keycloak-maintainers(at)googlegroups.com.
 The email should include evidence of the above list.
 
 The existing maintainers will then discuss the proposal. If anyone objects or wants more information, the maintainers 

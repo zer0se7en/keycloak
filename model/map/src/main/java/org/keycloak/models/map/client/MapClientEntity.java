@@ -16,7 +16,6 @@
  */
 package org.keycloak.models.map.client;
 
-import org.keycloak.models.ProtocolMapperModel;
 import org.keycloak.models.map.common.AbstractEntity;
 import org.keycloak.models.map.common.UpdatableEntity;
 import java.util.Collection;
@@ -27,26 +26,21 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Stream;
 import org.keycloak.models.map.annotations.GenerateEntityImplementations;
+import org.keycloak.models.map.common.DeepCloner;
 
 /**
  *
  * @author hmlnarik
  */
-@GenerateEntityImplementations(inherits="org.keycloak.models.map.client.MapClientEntity.AbstractClientEntity")
+@GenerateEntityImplementations(
+  inherits = "org.keycloak.models.map.client.MapClientEntity.AbstractClientEntity"
+)
+@DeepCloner.Root
 public interface MapClientEntity extends AbstractEntity, UpdatableEntity {
 
-    static abstract class AbstractClientEntity implements MapClientEntity {
-        /**
-         * Flag signalizing that any of the setters has been meaningfully used.
-         */
-        protected boolean updated;
+    public abstract class AbstractClientEntity extends UpdatableEntity.Impl implements MapClientEntity {
+
         private String id;
-
-        protected AbstractClientEntity() {}
-
-        public AbstractClientEntity(String id) {
-            this.id = id;
-        }
 
         @Override
         public String getId() {
@@ -58,11 +52,6 @@ public interface MapClientEntity extends AbstractEntity, UpdatableEntity {
             if (this.id != null) throw new IllegalStateException("Id cannot be changed");
             this.id = id;
             this.updated |= id != null;
-        }
-
-        @Override
-        public boolean isUpdated() {
-            return this.updated;
         }
 
         @Override
@@ -79,9 +68,9 @@ public interface MapClientEntity extends AbstractEntity, UpdatableEntity {
     void setClientScope(String id, Boolean defaultScope);
     void removeClientScope(String id);
 
-    ProtocolMapperModel getProtocolMapper(String id);
-    Map<String, ProtocolMapperModel> getProtocolMappers();
-    void setProtocolMapper(String id, ProtocolMapperModel mapping);
+    MapProtocolMapperEntity getProtocolMapper(String id);
+    Map<String, MapProtocolMapperEntity> getProtocolMappers();
+    void setProtocolMapper(String id, MapProtocolMapperEntity mapping);
     void removeProtocolMapper(String id);
 
     void addRedirectUri(String redirectUri);
@@ -98,7 +87,7 @@ public interface MapClientEntity extends AbstractEntity, UpdatableEntity {
     void removeWebOrigin(String webOrigin);
     void setWebOrigins(Set<String> webOrigins);
 
-    default List<String> getAttribute(String name) { return getAttributes().get(name); }
+    default List<String> getAttribute(String name) { return getAttributes() == null ? null : getAttributes().get(name); }
     Map<String, List<String>> getAttributes();
     void removeAttribute(String name);
     void setAttribute(String name, List<String> values);

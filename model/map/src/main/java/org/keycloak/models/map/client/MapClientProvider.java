@@ -140,7 +140,8 @@ public class MapClientProvider implements ClientProvider {
     public ClientModel addClient(RealmModel realm, String id, String clientId) {
         LOG.tracef("addClient(%s, %s, %s)%s", realm, id, clientId, getShortStackTrace());
 
-        MapClientEntity entity = new MapClientEntityImpl(id);
+        MapClientEntity entity = new MapClientEntityImpl();
+        entity.setId(id);
         entity.setRealmId(realm.getId());
         entity.setClientId(clientId);
         entity.setEnabled(true);
@@ -215,7 +216,7 @@ public class MapClientProvider implements ClientProvider {
         ModelCriteriaBuilder<ClientModel> mcb = clientStore.createCriteriaBuilder()
           .compare(SearchableFields.REALM_ID, Operator.EQ, realm.getId());
 
-        return this.clientStore.getCount(withCriteria(mcb));
+        return tx.getCount(withCriteria(mcb));
     }
 
     @Override
