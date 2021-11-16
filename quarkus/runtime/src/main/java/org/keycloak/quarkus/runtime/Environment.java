@@ -17,6 +17,8 @@
 
 package org.keycloak.quarkus.runtime;
 
+import static org.keycloak.quarkus.runtime.configuration.Configuration.getBuiltTimeProperty;
+
 import java.io.File;
 import java.io.FilenameFilter;
 import java.nio.file.Path;
@@ -24,14 +26,12 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import io.quarkus.runtime.LaunchMode;
 import io.quarkus.runtime.configuration.ProfileManager;
 import org.apache.commons.lang3.SystemUtils;
-import org.keycloak.quarkus.runtime.configuration.Configuration;
 
 public final class Environment {
 
@@ -39,6 +39,8 @@ public final class Environment {
     public static final String CLI_ARGS = "kc.config.args";
     public static final String PROFILE ="kc.profile";
     public static final String ENV_PROFILE ="KC_PROFILE";
+    public static final String DATA_PATH = "/data";
+    public static final String DEFAULT_THEMES_PATH = "/themes";
 
     private Environment() {}
 
@@ -58,6 +60,14 @@ public final class Environment {
         }
 
         return null;
+    }
+
+    public static String getDataDir() {
+        return getHomeDir() + DATA_PATH;
+    }
+
+    public static String getDefaultThemeRootDir() {
+        return getHomeDir() + DEFAULT_THEMES_PATH;
     }
 
     public static Path getProvidersPath() {
@@ -112,23 +122,17 @@ public final class Environment {
         return profile;
     }
 
-    public static Optional<String> getBuiltTimeProperty(String name) {
-        String value = Configuration.getBuiltTimeProperty(name);
-
-        if (value == null) {
-            return Optional.empty();
-        }
-        
-        return Optional.of(value);
-    }
-
     public static boolean isDevMode() {
         if ("dev".equalsIgnoreCase(getProfile())) {
             return true;
         }
 
         // if running in quarkus:dev mode
-        return ProfileManager.getLaunchMode() == LaunchMode.DEVELOPMENT;
+        if (ProfileManager.getLaunchMode() == LaunchMode.DEVELOPMENT) {
+            return true;
+        }
+
+        return "dev".equals(getBuiltTimeProperty(PROFILE).orElse(null));
     }
 
     public static boolean isImportExportMode() {
@@ -140,8 +144,7 @@ public final class Environment {
     }
 
     public static void forceDevProfile() {
-        System.setProperty(PROFILE, "dev");
-        System.setProperty("quarkus.profile", "dev");
+        setProfile("dev");
     }
 
     public static Map<String, File> getProviderFiles() {

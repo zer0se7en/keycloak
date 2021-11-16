@@ -23,7 +23,7 @@ fi
 GREP="grep"
 DIRNAME=`dirname "$RESOLVED_NAME"`
 
-SERVER_OPTS="-Dkc.home.dir=$DIRNAME/../ -Djboss.server.config.dir=$DIRNAME/../conf -Dkeycloak.theme.dir=$DIRNAME/../themes -Djava.util.logging.manager=org.jboss.logmanager.LogManager"
+SERVER_OPTS="-Dkc.home.dir=$DIRNAME/../ -Djboss.server.config.dir=$DIRNAME/../conf -Djava.util.logging.manager=org.jboss.logmanager.LogManager"
 
 DEBUG_MODE="${DEBUG:-false}"
 DEBUG_PORT="${DEBUG_PORT:-8787}"
@@ -48,7 +48,7 @@ do
           if [[ $1 = --* || ! $1 =~ ^-D.* ]]; then
             CONFIG_ARGS="$CONFIG_ARGS $1"
             if [[ "$1" = "start-dev" ]]; then
-              CONFIG_ARGS="$CONFIG_ARGS --auto-build"
+              CONFIG_ARGS="$CONFIG_ARGS --profile=dev --auto-build"
             fi
           else
             SERVER_OPTS="$SERVER_OPTS $1"
@@ -62,7 +62,7 @@ done
 # Specify options to pass to the Java VM.
 #
 if [ "x$JAVA_OPTS" = "x" ]; then
-   JAVA_OPTS="-Xms64m -Xmx512m -XX:MetaspaceSize=96M -XX:MaxMetaspaceSize=256m -Djava.net.preferIPv4Stack=true"
+   JAVA_OPTS="-Xms64m -Xmx512m -XX:MetaspaceSize=96M -XX:MaxMetaspaceSize=256m -Djava.net.preferIPv4Stack=true -Dquarkus-log-max-startup-records=10000"
 else
    echo "JAVA_OPTS already set in environment; overriding default settings with values: $JAVA_OPTS"
 fi

@@ -18,11 +18,11 @@
 package org.keycloak.quarkus.runtime.cli.command;
 
 import static java.lang.Boolean.parseBoolean;
+import static org.keycloak.quarkus.runtime.configuration.Configuration.getBuiltTimeProperty;
 import static org.keycloak.quarkus.runtime.configuration.Configuration.getConfigValue;
 import static org.keycloak.quarkus.runtime.configuration.Configuration.getPropertyNames;
-import static org.keycloak.quarkus.runtime.configuration.PropertyMappers.canonicalFormat;
-import static org.keycloak.quarkus.runtime.configuration.PropertyMappers.formatValue;
-import static org.keycloak.quarkus.runtime.Environment.getBuiltTimeProperty;
+import static org.keycloak.quarkus.runtime.configuration.mappers.PropertyMappers.canonicalFormat;
+import static org.keycloak.quarkus.runtime.configuration.mappers.PropertyMappers.formatValue;
 
 import java.util.HashSet;
 import java.util.Map;
@@ -31,22 +31,27 @@ import java.util.function.BiConsumer;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
+
 import org.keycloak.quarkus.runtime.configuration.MicroProfileConfigProvider;
 import org.keycloak.quarkus.runtime.configuration.PersistedConfigSource;
-import org.keycloak.quarkus.runtime.configuration.PropertyMappers;
 import org.keycloak.quarkus.runtime.Environment;
 
 import io.smallrye.config.ConfigValue;
-import picocli.CommandLine;
+import picocli.CommandLine.Command;
+import picocli.CommandLine.Parameters;
 
-@CommandLine.Command(name = "show-config",
-        description = "Print out the current configuration.",
-        mixinStandardHelpOptions = true,
-        optionListHeading = "%nOptions%n",
-        parameterListHeading = "Available Commands%n")
+@Command(name = "show-config",
+        header = "Print out the current configuration.",
+        description = "%nPrint out the current configuration.",
+        abbreviateSynopsis = true,
+        optionListHeading = "Options:")
 public final class ShowConfig extends AbstractCommand implements Runnable {
 
-    @CommandLine.Parameters(paramLabel = "filter", defaultValue = "none", description = "Show all configuration options. Use 'all' to show all options.") String filter;
+    @Parameters(
+            paramLabel = "filter",
+            defaultValue = "none",
+            description = "Show all configuration options. Use 'all' to show all options.")
+    String filter;
 
     @Override
     public void run() {
@@ -101,7 +106,7 @@ public final class ShowConfig extends AbstractCommand implements Runnable {
                     .forEach((p, properties1) -> {
                         if (p.equals(profile)) {
                             spec.commandLine().getOut().printf("Profile \"%s\" Configuration (%s):%n", p,
-                                    p.equals(profile) ? "current" : "");
+                                    "current");
                         } else {
                             spec.commandLine().getOut().printf("Profile \"%s\" Configuration:%n", p);
                         }
@@ -153,7 +158,7 @@ public final class ShowConfig extends AbstractCommand implements Runnable {
     }
 
     private void printProperty(String property) {
-        String canonicalFormat = PropertyMappers.canonicalFormat(property);
+        String canonicalFormat = canonicalFormat(property);
         ConfigValue configValue = getConfigValue(canonicalFormat);
 
         if (configValue.getValue() == null) {
@@ -165,6 +170,10 @@ public final class ShowConfig extends AbstractCommand implements Runnable {
             return;
         }
 
+        if (configValue.getSourceName() == null) {
+            return;
+        }
+
         spec.commandLine().getOut().printf("\t%s =  %s (%s)%n", configValue.getName(), formatValue(configValue.getName(), configValue.getValue()), configValue.getConfigSourceName());
     }
 
@@ -172,7 +181,14 @@ public final class ShowConfig extends AbstractCommand implements Runnable {
         if (property.startsWith("%")) {
             return "%";
         }
-        return property.substring(0, property.indexOf('.'));
+
+        int endIndex = property.indexOf('.');
+
+        if (endIndex == -1) {
+            return "";
+        }
+
+        return property.substring(0, endIndex);
     }
 
     private static boolean filterByGroup(String property) {

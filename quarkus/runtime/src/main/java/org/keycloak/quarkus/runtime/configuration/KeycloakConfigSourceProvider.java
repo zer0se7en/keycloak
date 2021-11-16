@@ -52,9 +52,10 @@ public class KeycloakConfigSourceProvider implements ConfigSourceProvider {
         }
 
         CONFIG_SOURCES.add(new ConfigArgsConfigSource());
+        CONFIG_SOURCES.add(new SysPropConfigSource());
+        CONFIG_SOURCES.add(new KcEnvConfigSource());
         PERSISTED_CONFIG_SOURCE = new PersistedConfigSource(getPersistedConfigFile());
         CONFIG_SOURCES.add(PERSISTED_CONFIG_SOURCE);
-        CONFIG_SOURCES.add(new SysPropConfigSource());
 
         Path configFile = getConfigurationFile();
 
@@ -107,7 +108,11 @@ public class KeycloakConfigSourceProvider implements ConfigSourceProvider {
             return Paths.get(System.getProperty("java.io.tmpdir"), PersistedConfigSource.KEYCLOAK_PROPERTIES);
         }
 
-        return Paths.get(homeDir, "conf", PersistedConfigSource.KEYCLOAK_PROPERTIES);
+        Path generatedPath = Paths.get(homeDir, "data", "generated");
+
+        generatedPath.toFile().mkdirs();
+
+        return generatedPath.resolve(PersistedConfigSource.KEYCLOAK_PROPERTIES);
     }
 
     @Override

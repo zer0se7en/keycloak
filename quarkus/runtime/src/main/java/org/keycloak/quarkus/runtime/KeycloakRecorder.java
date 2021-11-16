@@ -21,6 +21,7 @@ import static org.keycloak.quarkus.runtime.configuration.Configuration.getBuiltT
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.jboss.logging.Logger;
 import org.keycloak.common.Profile;
@@ -31,15 +32,15 @@ import org.keycloak.quarkus.runtime.storage.database.liquibase.KeycloakLogger;
 import org.keycloak.provider.Provider;
 import org.keycloak.provider.ProviderFactory;
 import org.keycloak.provider.Spi;
+import org.keycloak.quarkus.runtime.storage.infinispan.CacheInitializer;
 
+import io.quarkus.runtime.RuntimeValue;
 import io.quarkus.runtime.annotations.Recorder;
 import liquibase.logging.LogFactory;
 import liquibase.servicelocator.ServiceLocator;
 
 @Recorder
 public class KeycloakRecorder {
-
-    private static final Logger LOGGER = Logger.getLogger(KeycloakRecorder.class);
 
     public void configureLiquibase(Map<String, List<String>> services) {
         LogFactory.setInstance(new LogFactory() {
@@ -84,18 +85,22 @@ public class KeycloakRecorder {
                     feature = "kc.features";
                 }
 
-                String value = getBuiltTimeProperty(feature);
+                Optional<String> value = getBuiltTimeProperty(feature);
 
-                if (value == null) {
+                if (value.isEmpty()) {
                     value = getBuiltTimeProperty(feature.replaceAll("\\.features\\.", "\\.features-"));
                 }
                 
-                if (value != null) {
-                    return value;
+                if (value.isPresent()) {
+                    return value.get();
                 }
 
                 return Configuration.getRawValue(feature);
             }
         });
+    }
+
+    public RuntimeValue<CacheInitializer> createCacheInitializer(String config) {
+        return new RuntimeValue<>(new CacheInitializer(config));
     }
 }

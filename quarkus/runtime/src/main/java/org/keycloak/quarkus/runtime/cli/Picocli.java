@@ -17,26 +17,24 @@
 
 package org.keycloak.quarkus.runtime.cli;
 
+import static io.smallrye.config.common.utils.StringUtil.replaceNonAlphanumericByUnderscores;
 import static java.util.Arrays.asList;
-import static org.keycloak.quarkus.runtime.cli.command.AbstractStartCommand.AUTO_BUILD_OPTION;
+import static org.keycloak.quarkus.runtime.cli.command.AbstractStartCommand.AUTO_BUILD_OPTION_LONG;
+import static org.keycloak.quarkus.runtime.cli.command.AbstractStartCommand.AUTO_BUILD_OPTION_SHORT;
+import static org.keycloak.quarkus.runtime.configuration.Configuration.getBuiltTimeProperty;
 import static org.keycloak.quarkus.runtime.configuration.Configuration.getConfig;
-import static org.keycloak.quarkus.runtime.configuration.PropertyMappers.isBuildTimeProperty;
 import static org.keycloak.quarkus.runtime.Environment.isDevMode;
+import static org.keycloak.quarkus.runtime.configuration.Configuration.getRuntimeProperty;
+import static org.keycloak.quarkus.runtime.configuration.mappers.PropertyMappers.isBuildTimeProperty;
+import static org.keycloak.utils.StringUtil.isNotBlank;
 import static picocli.CommandLine.Model.UsageMessageSpec.SECTION_KEY_COMMAND_LIST;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
 import java.io.PrintWriter;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Set;
-import java.util.function.IntFunction;
+import java.nio.file.FileSystemException;
+import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -46,14 +44,23 @@ import org.keycloak.quarkus.runtime.cli.command.Main;
 import org.keycloak.quarkus.runtime.cli.command.Start;
 import org.keycloak.quarkus.runtime.cli.command.StartDev;
 import org.keycloak.common.Profile;
+import org.keycloak.quarkus.runtime.configuration.mappers.ConfigCategory;
+import org.keycloak.quarkus.runtime.configuration.mappers.PropertyMappers;
 import org.keycloak.quarkus.runtime.configuration.KeycloakConfigSourceProvider;
-import org.keycloak.quarkus.runtime.configuration.PropertyMapper;
-import org.keycloak.quarkus.runtime.configuration.PropertyMappers;
+import org.keycloak.quarkus.runtime.configuration.mappers.Messages;
+import org.keycloak.quarkus.runtime.configuration.mappers.PropertyMapper;
 import org.keycloak.platform.Platform;
 import org.keycloak.quarkus.runtime.InitializationException;
 import org.keycloak.quarkus.runtime.integration.QuarkusPlatform;
 import org.keycloak.quarkus.runtime.Environment;
+
+import io.smallrye.config.ConfigValue;
 import picocli.CommandLine;
+import picocli.CommandLine.Model.CommandSpec;
+import picocli.CommandLine.UnmatchedArgumentException;
+import picocli.CommandLine.ParseResult;
+import picocli.CommandLine.Model.OptionSpec;
+import picocli.CommandLine.Model.ArgGroupSpec;
 
 public final class Picocli {
 
@@ -61,9 +68,12 @@ public final class Picocli {
 
     private static final String ARG_SEPARATOR = ";;";
     public static final String ARG_PREFIX = "--";
+    public static final String ARG_SHORT_PREFIX = "-";
+    public static final String ARG_PART_SEPARATOR = "-";
     public static final char ARG_KEY_VALUE_SEPARATOR = '=';
     public static final Pattern ARG_SPLIT = Pattern.compile(";;");
     public static final Pattern ARG_KEY_VALUE_SPLIT = Pattern.compile("=");
+    public static final String NO_PARAM_LABEL = "none";
 
     private Picocli() {
     }
@@ -72,13 +82,13 @@ public final class Picocli {
         CommandLine cmd = createCommandLine(cliArgs);
 
         try {
-            CommandLine.ParseResult result = cmd.parseArgs(cliArgs.toArray(new String[0]));
+            ParseResult result = cmd.parseArgs(cliArgs.toArray(new String[0]));
 
             if (!result.hasSubcommand() && !result.isUsageHelpRequested() && !result.isVersionHelpRequested()) {
                 // if no command was set, the start command becomes the default
                 cliArgs.add(0, Start.NAME);
             }
-        } catch (CommandLine.UnmatchedArgumentException e) {
+        } catch (UnmatchedArgumentException e) {
             // if no command was set but options were provided, the start command becomes the default
             if (!cmd.getParseResult().hasSubcommand() && cliArgs.get(0).startsWith("--")) {
                 cliArgs.add(0, "start");
@@ -104,15 +114,19 @@ public final class Picocli {
     }
 
     private static void runReAugmentationIfNeeded(List<String> cliArgs, CommandLine cmd) {
-        if (cliArgs.contains(AUTO_BUILD_OPTION)) {
+        if (hasAutoBuildOption(cliArgs) && !(cliArgs.contains("--help") || cliArgs.contains("-h"))) {
             if (requiresReAugmentation(cmd)) {
                 runReAugmentation(cliArgs, cmd);
             }
-
-            if (Boolean.getBoolean("kc.config.rebuild-and-exit")) {
-                System.exit(cmd.getCommandSpec().exitCodeOnSuccess());
-            }
         }
+
+        if (Boolean.getBoolean("kc.config.rebuild-and-exit")) {
+            System.exit(cmd.getCommandSpec().exitCodeOnSuccess());
+        }
+    }
+
+    private static boolean hasAutoBuildOption(List<String> cliArgs) {
+        return cliArgs.contains(AUTO_BUILD_OPTION_LONG) || cliArgs.contains(AUTO_BUILD_OPTION_SHORT);
     }
 
     private static boolean requiresReAugmentation(CommandLine cmd) {
@@ -146,12 +160,13 @@ public final class Picocli {
             configArgsList.remove(0);
         }
 
-        configArgsList.remove("--auto-build");
+        configArgsList.remove(AUTO_BUILD_OPTION_LONG);
+        configArgsList.remove(AUTO_BUILD_OPTION_SHORT);
         configArgsList.add(0, Build.NAME);
 
         cmd.execute(configArgsList.toArray(new String[0]));
 
-        cmd.getOut().printf("Next time you run the server, just run:%n%n\t%s%n%n", Environment.getCommand());
+        cmd.getOut().printf("Next time you run the server, just run:%n%n\t%s %s%n%n", Environment.getCommand(), Start.NAME);
     }
 
     private static boolean hasProviderChanges() {
@@ -196,9 +211,22 @@ public final class Picocli {
     }
 
     private static boolean hasConfigChanges() {
+        Optional<String> currentProfile = Optional.ofNullable(Environment.getProfile());
+        Optional<String> persistedProfile = getBuiltTimeProperty("kc.profile");
+
+        if (!persistedProfile.orElse("").equals(currentProfile.orElse(""))) {
+            return true;
+        }
+
         for (String propertyName : getConfig().getPropertyNames()) {
             // only check keycloak build-time properties
             if (!isBuildTimeProperty(propertyName)) {
+                continue;
+            }
+
+            ConfigValue configValue = getConfig().getConfigValue(propertyName);
+
+            if (configValue == null || configValue.getConfigSourceName() == null) {
                 continue;
             }
 
@@ -207,11 +235,16 @@ public final class Picocli {
                 propertyName = propertyName.substring(propertyName.indexOf('.') + 1);
             }
 
-            String currentValue = Environment.getBuiltTimeProperty(propertyName).orElse(null);
-            String newValue = getConfig().getConfigValue(propertyName).getValue();
+            String persistedValue = getBuiltTimeProperty(propertyName).orElse("");
+            String runtimeValue = getRuntimeProperty(propertyName).orElse(null);
 
-            if (newValue != null && !newValue.equalsIgnoreCase(currentValue)) {
-                // changes to a single property are enough to indicate changes to configuration
+            if (runtimeValue == null && isNotBlank(persistedValue)) {
+                // probably because it was unset
+                return true;
+            }
+
+            // changes to a single property is enough to indicate changes to configuration
+            if (!persistedValue.equals(runtimeValue)) {
                 return true;
             }
         }
@@ -224,24 +257,26 @@ public final class Picocli {
     }
 
     private static CommandLine createCommandLine(List<String> cliArgs) {
-        CommandLine.Model.CommandSpec spec = CommandLine.Model.CommandSpec.forAnnotatedObject(new Main())
+        CommandSpec spec = CommandSpec.forAnnotatedObject(new Main())
                 .name(Environment.getCommand());
 
-        boolean addBuildOptionsToStartCommand = cliArgs.contains(AUTO_BUILD_OPTION);
+        boolean isStartCommand = cliArgs.size() == 1 && cliArgs.contains(Start.NAME);
 
-        addOption(spec, Start.NAME, addBuildOptionsToStartCommand);
-        addOption(spec, StartDev.NAME, true);
-        addOption(spec, Build.NAME, true);
-
-        for (Profile.Feature feature : Profile.Feature.values()) {
-            addOption(spec.subcommands().get(Build.NAME).getCommandSpec(), "--features-" + feature.name().toLowerCase(),
-                    "Enables the " + feature.name() + " feature. Set enabled to enable the feature or disabled otherwise.", null);
+        // avoid unnecessary processing when starting the server
+        if (!isStartCommand) {
+            addOption(spec, Start.NAME, hasAutoBuildOption(cliArgs));
+            addOption(spec, StartDev.NAME, true);
+            addOption(spec, Build.NAME, true);
         }
-        
+
         CommandLine cmd = new CommandLine(spec);
 
-        cmd.getHelpSectionMap().put(SECTION_KEY_COMMAND_LIST, new SubCommandListRenderer());
         cmd.setExecutionExceptionHandler(new ExecutionExceptionHandler());
+
+        if (!isStartCommand) {
+            cmd.setHelpFactory(Help::new);
+            cmd.getHelpSectionMap().put(SECTION_KEY_COMMAND_LIST, new SubCommandListRenderer());
+        }
 
         return cmd;
     }
@@ -250,7 +285,7 @@ public final class Picocli {
         StringBuilder options = new StringBuilder();
         Iterator<String> iterator = argsList.iterator();
         boolean expectValue = false;
-        List<String> ignoredArgs = asList("--verbose", "-v", "--help", "-h", AUTO_BUILD_OPTION);
+        List<String> ignoredArgs = asList("--verbose", "-v", "--help", "-h", AUTO_BUILD_OPTION_LONG, AUTO_BUILD_OPTION_SHORT);
 
         while (iterator.hasNext()) {
             String key = iterator.next();
@@ -285,45 +320,93 @@ public final class Picocli {
         return options.toString();
     }
 
-    private static void addOption(CommandLine.Model.CommandSpec spec, String command, boolean includeBuildTime) {
-        CommandLine.Model.CommandSpec commandSpec = spec.subcommands().get(command).getCommandSpec();
+    private static void addOption(CommandSpec spec, String command, boolean includeBuildTime) {
+        CommandSpec commandSpec = spec.subcommands().get(command).getCommandSpec();
         List<PropertyMapper> mappers = new ArrayList<>(PropertyMappers.getRuntimeMappers());
 
         if (includeBuildTime) {
-            mappers.addAll(PropertyMappers.getBuiltTimeMappers());
+            mappers.addAll(PropertyMappers.getBuildTimeMappers());
+            addFeatureOptions(commandSpec);
         }
 
-        for (PropertyMapper mapper : mappers) {
-            String name = ARG_PREFIX + PropertyMappers.toCLIFormat(mapper.getFrom()).substring(3);
-            String description = mapper.getDescription();
+        addMappedOptionsToArgGroups(commandSpec, mappers);
+    }
 
-            if (description == null || commandSpec.optionsMap().containsKey(name)) {
+    private static void addFeatureOptions(CommandSpec commandSpec) {
+        ArgGroupSpec.Builder featureGroupBuilder = ArgGroupSpec.builder()
+                .heading(ConfigCategory.FEATURE.getHeading())
+                .order(ConfigCategory.FEATURE.getOrder())
+                .validate(false);
+
+        Set<String> featuresExpectedValues = Arrays.stream(Profile.Type.values()).map(type -> type.name().toLowerCase()).collect(Collectors.toSet());
+
+        featureGroupBuilder.addArg(OptionSpec.builder(new String[] {"-ft", "--features"})
+                .description("Enables a group of features. Possible values are: " + String.join(",", featuresExpectedValues))
+                .paramLabel("feature")
+                .completionCandidates(featuresExpectedValues)
+                .parameterConsumer(PropertyMapperParameterConsumer.INSTANCE)
+                .type(String.class)
+                .build());
+
+        List<String> expectedValues = asList("enabled", "disabled");
+
+        for (Profile.Feature feature : Profile.Feature.values()) {
+            featureGroupBuilder.addArg(OptionSpec.builder("--features-" + feature.name().toLowerCase())
+                    .description("Enables the " + feature.name() + " feature.")
+                    .paramLabel(String.join("|", expectedValues))
+                    .type(String.class)
+                    .parameterConsumer(PropertyMapperParameterConsumer.INSTANCE)
+                    .completionCandidates(expectedValues)
+                    .build());
+        }
+
+        commandSpec.addArgGroup(featureGroupBuilder.build());
+    }
+
+    private static void addMappedOptionsToArgGroups(CommandSpec cSpec, List<PropertyMapper> propertyMappers) {
+        for(ConfigCategory category : ConfigCategory.values()) {
+            List<PropertyMapper> mappersInCategory = propertyMappers.stream()
+                    .filter(m -> category.equals(m.getCategory()))
+                    .collect(Collectors.toList());
+
+            if(mappersInCategory.isEmpty()){
+                //picocli raises an exception when an ArgGroup is empty, so ignore it when no mappings found for a category.
                 continue;
             }
 
-            addOption(commandSpec, name, description, mapper);
+            ArgGroupSpec.Builder argGroupBuilder = ArgGroupSpec.builder()
+                    .heading(category.getHeading())
+                    .order(category.getOrder())
+                    .validate(false);
+
+            for(PropertyMapper mapper: mappersInCategory) {
+                String name = ARG_PREFIX + PropertyMappers.toCLIFormat(mapper.getFrom()).substring(3);
+                String description = mapper.getDescription();
+
+                if (description == null || cSpec.optionsMap().containsKey(name) || name.endsWith(ARG_PART_SEPARATOR)) {
+                    //when key is already added or has no description, don't add.
+                    continue;
+                }
+
+                String defaultValue = mapper.getDefaultValue();
+                Iterable<String> expectedValues = mapper.getExpectedValues();
+
+                argGroupBuilder.addArg(OptionSpec.builder(name)
+                        .defaultValue(defaultValue)
+                        .description(description)
+                        .paramLabel(mapper.getParamLabel())
+                        .completionCandidates(expectedValues)
+                        .parameterConsumer(PropertyMapperParameterConsumer.INSTANCE)
+                        .type(String.class)
+                        .build());
+            }
+
+            cSpec.addArgGroup(argGroupBuilder.build());
         }
-
-        addOption(commandSpec, "--features", "Enables a group of features. Possible values are: "
-                + String.join(",", Arrays.stream(Profile.Type.values()).map(
-                type -> type.name().toLowerCase()).toArray((IntFunction<CharSequence[]>) String[]::new)), null);
-    }
-
-    private static void addOption(CommandLine.Model.CommandSpec commandSpec, String name, String description, PropertyMapper mapper) {
-        CommandLine.Model.OptionSpec.Builder builder = CommandLine.Model.OptionSpec.builder(name)
-                .description(description)
-                .paramLabel(name.substring(2))
-                .type(String.class);
-
-        if (mapper != null) {
-            builder.completionCandidates(mapper.getExpectedValues());
-        }
-
-        commandSpec.addOption(builder.build());
     }
 
     public static List<String> getCliArgs(CommandLine cmd) {
-        CommandLine.ParseResult parseResult = cmd.getParseResult();
+        ParseResult parseResult = cmd.getParseResult();
 
         if (parseResult == null) {
             return Collections.emptyList();
@@ -385,7 +468,20 @@ public final class Picocli {
                 if (cause.getMessage() != null) {
                     logError(errorWriter, String.format("ERROR: %s", cause.getMessage()));
                 }
+                printErrorHints(errorWriter, cause);
             } while ((cause = cause.getCause())!= null);
+        }
+        printErrorHints(errorWriter, cause);
+    }
+
+    private static void printErrorHints(PrintWriter errorWriter, Throwable cause) {
+        if (cause instanceof FileSystemException) {
+            FileSystemException fse = (FileSystemException) cause;
+            ConfigValue httpsCertFile = getConfig().getConfigValue("kc.https.certificate.file");
+
+            if (fse.getFile().equals(Optional.ofNullable(httpsCertFile.getValue()).orElse(null))) {
+                logError(errorWriter, Messages.httpsConfigurationNotSet().getMessage());
+            }
         }
     }
 
@@ -411,5 +507,9 @@ public final class Picocli {
                 cause.printStackTrace();
             }
         }
+    }
+
+    public static String normalizeKey(String key) {
+        return replaceNonAlphanumericByUnderscores(key).replace('_', '.');
     }
 }

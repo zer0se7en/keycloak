@@ -16,11 +16,11 @@ discussion first. For minor changes you can skip this part and go straight ahead
 Here's a quick checklist for a good PR, more details below:
 
 1. A discussion around the change (https://github.com/keycloak/keycloak/discussions/categories/ideas)
-2. A JIRA with a good description associated with the PR
+2. A GitHub Issue with a good description associated with the PR
 3. One feature/change per PR
 4. One commit per PR
-5. PR rebased on master (`git rebase`, not `git pull`) 
-5. Commit message is prefixed by JIRA number
+5. PR rebased on main (`git rebase`, not `git pull`) 
+5. Commit message includes link to issue ([linking a pull request to an issue](https://docs.github.com/en/issues/tracking-your-work-with-issues/linking-a-pull-request-to-an-issue))
 6. No changes to code not directly related to your PR
 7. Includes functional/integration test
 8. Includes documentation
@@ -34,8 +34,8 @@ not be able to respond to your PR immediately. The best place to ping us is on t
 ### Finding something to work on
 
 If you would like to contribute to Keycloak, but are not sure exactly what to work on, you can find a number of open
-issues that are awaiting contributions in the 
-[Keycloak JIRA](https://issues.jboss.org/projects/KEYCLOAK/versions/12340167).
+issues that are awaiting contributions in  
+[issues](https://github.com/keycloak/keycloak/issues).
 
 ### Open a discussion on a proposed change
 
@@ -45,17 +45,15 @@ Discussions should first and foremost be done through [GitHub Discussions](https
 
 The [Keycloak Dev Mailing List](https://groups.google.com/forum/#!forum/keycloak-dev) can be used to notify the community on your new discussion, and can also be used for more low-level implementation discussions.
 
-For very large proposals it can be inefficient to capture all the information in the GitHub Discussion. In this cases a separate design proposal can be sent to the [Keycloak Community repository](https://github.com/keycloak/keycloak-community/tree/master/design), and linked to from the GitHub Discussion.
+For very large proposals it can be inefficient to capture all the information in the GitHub Discussion. In this cases a separate design proposal can be sent to the [Keycloak Community repository](https://github.com/keycloak/keycloak-community/tree/main/design), and linked to from the GitHub Discussion.
 
-### Create an issue in Keycloak JIRA
+### Create an issue
 
-Take your time to write a proper JIRA including a good summary and description. 
+Take your time to write a proper issue including a good summary and description. 
 
 Remember this may be the first thing a reviewer of your PR will look at to get an idea of what you are proposing 
 and it will also be used by the community in the future to find about what new features and enhancements are included in 
 new releases.
-
-Note: Keycloak Node.js Admin Client uses GitHub issues and not the Keycloak JIRA.
 
 ### Implementing
 
@@ -81,10 +79,10 @@ In the description of your PR include a link to the PR to [Keycloak Documentatio
 
 ### Submitting your PR
 
-When preparing your PR make sure you have a single commit and your branch is rebased on the master branch from the 
+When preparing your PR make sure you have a single commit and your branch is rebased on the main branch from the 
 project repository.
 
-This means use the `git rebase` command and not `git pull` when integrating changes from master to your branch. See
+This means use the `git rebase` command and not `git pull` when integrating changes from main to your branch. See
 [Git Documentation](https://git-scm.com/book/en/v2/Git-Branching-Rebasing) for more details.
 
 We require that you squash to a single commit. You can do this with the `git rebase -i HEAD~X` command where X
@@ -94,5 +92,4 @@ for more details.
 The above helps us review your PR and also makes it easier for us to maintain the repository. It is also required by
 our automatic merging process. 
 
-We also require that the commit message is prefixed with the Keycloak JIRA issue number (example commit message 
-"KEYCLOAK-9876 My super cool new feature").
+We also require that the commit message includes a link to the issue ([linking a pull request to an issue](https://docs.github.com/en/issues/tracking-your-work-with-issues/linking-a-pull-request-to-an-issue)).

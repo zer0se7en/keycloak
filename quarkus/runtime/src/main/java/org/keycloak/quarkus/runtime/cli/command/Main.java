@@ -17,29 +17,41 @@
 
 package org.keycloak.quarkus.runtime.cli.command;
 
-import org.keycloak.quarkus.runtime.configuration.KeycloakConfigSourceProvider;
+import static org.keycloak.quarkus.runtime.cli.Picocli.NO_PARAM_LABEL;
 
-import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
+import picocli.CommandLine.ScopeType;
 
 @Command(name = "keycloak",
-        usageHelpWidth = 150, 
         header = {
-            "Keycloak - Open Source Identity and Access Management",
-            "",
-            "Find more information at: https://www.keycloak.org/",
-            ""
+                "Keycloak - Open Source Identity and Access Management",
+                "",
+                "Find more information at: https://www.keycloak.org/docs/latest"
         },
-        description = "Use this command-line tool to manage your Keycloak cluster%n", footerHeading = "%nUse \"${COMMAND-NAME} <command> --help\" for more information about a command.",
-        footer = "%nby Red Hat",
-        optionListHeading = "Configuration Options%n%n",
-        commandListHeading = "%nCommands%n%n",
+        description = "%nUse this command-line tool to manage your Keycloak cluster.",
+        footerHeading = "Examples:",
+        footer = { "  Start the server in development mode for local development or testing:%n%n"
+                + "      $ ${COMMAND-NAME} start-dev%n%n"
+                + "  Building an optimized server runtime:%n%n"
+                + "      $ ${COMMAND-NAME} build <OPTIONS>%n%n"
+                + "  Start the server in production mode:%n%n"
+                + "      $ ${COMMAND-NAME} start <OPTIONS>%n%n"
+                + "  Enable auto-completion to bash/zsh:%n%n"
+                + "      $ source <(${COMMAND-NAME} tools completion)%n%n"
+                + "  Please, take a look at the documentation for more details before deploying in production.",
+                "",
+                "Use \"${COMMAND-NAME} start --help\" for the available options when starting the server.",
+                "Use \"${COMMAND-NAME} <command> --help\" for more information about other commands."
+        },
         version = {
-        "Keycloak ${sys:kc.version}",
-        "JVM: ${java.version} (${java.vendor} ${java.vm.name} ${java.vm.version})",
-        "OS: ${os.name} ${os.version} ${os.arch}"
+            "Keycloak ${sys:kc.version}",
+            "JVM: ${java.version} (${java.vendor} ${java.vm.name} ${java.vm.version})",
+            "OS: ${os.name} ${os.version} ${os.arch}"
         },
+        optionListHeading = "Options:",
+        commandListHeading = "Commands:",
+        abbreviateSynopsis = true,
         subcommands = {
                 Build.class,
                 Start.class,
@@ -48,26 +60,27 @@ import picocli.CommandLine.Option;
                 Import.class,
                 ShowConfig.class,
                 Tools.class
-        }
-)
+        })
 public final class Main {
 
-    @CommandLine.Option(names = "-D<key>=<value>", description = "Set a Java system property", scope = CommandLine.ScopeType.INHERIT, order = 0)
+    @Option(names = "-D<key>=<value>",
+            description = "Set a Java system property",
+            order = 0)
     Boolean sysProps;
 
-    @Option(names = { "-h", "--help" }, description = "This help message.", usageHelp = true)
+    @Option(names = { "-h", "--help" },
+            description = "This help message.",
+            usageHelp = true)
     boolean help;
 
-    @Option(names = { "-V", "--version" }, description = "Show version information", versionHelp = true)
+    @Option(names = { "-V", "--version" },
+            description = "Show version information",
+            versionHelp = true)
     boolean version;
 
     @Option(names = { "-v", "--verbose" },
-            description = "Print out more details when running this command. Useful for troubleshooting if some unexpected error occurs.", required = false,
-            scope = CommandLine.ScopeType.INHERIT)
+            description = "Print out error details when running this command.",
+            paramLabel = NO_PARAM_LABEL,
+            scope = ScopeType.INHERIT)
     Boolean verbose;
-
-    @Option(names = {"-cf", "--config-file"}, arity = "1", description = "Set the path to a configuration file.", paramLabel = "<path>")
-    public void setConfigFile(String path) {
-        System.setProperty(KeycloakConfigSourceProvider.KEYCLOAK_CONFIG_FILE_PROP, path);
-    }
 }

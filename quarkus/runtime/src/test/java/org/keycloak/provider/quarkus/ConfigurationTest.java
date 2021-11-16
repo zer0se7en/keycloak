@@ -18,6 +18,7 @@
 package org.keycloak.provider.quarkus;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.keycloak.quarkus.runtime.Environment.CLI_ARGS;
 
 import java.io.File;
@@ -42,6 +43,7 @@ import org.keycloak.quarkus.runtime.configuration.MicroProfileConfigProvider;
 import io.quarkus.runtime.configuration.ConfigUtils;
 import io.smallrye.config.SmallRyeConfigProviderResolver;
 import org.keycloak.quarkus.runtime.Environment;
+import org.keycloak.vault.FilesPlainTextVaultProviderFactory;
 
 public class ConfigurationTest {
 
@@ -117,6 +119,15 @@ public class ConfigurationTest {
     }
 
     @Test
+    public void testEnvVarAvailableFromPropertyNames() {
+        putEnvVar("KC_VAULT_FILE_PATH", "/foo/bar");
+        Config.Scope config = initConfig("vault", FilesPlainTextVaultProviderFactory.PROVIDER_ID);
+        assertEquals("/foo/bar", config.get("dir"));
+        assertTrue(config.getPropertyNames()
+                .contains("kc.spi.vault.".concat(FilesPlainTextVaultProviderFactory.PROVIDER_ID).concat(".dir")));
+    }
+
+    @Test
     public void testSysPropPriorityOverEnvVar() {
         putEnvVar("KC_SPI_HOSTNAME_DEFAULT_FRONTEND_URL", "http://envvar.unittest");
         System.setProperty("kc.spi.hostname.default.frontend-url", "http://propvar.unittest");
@@ -176,6 +187,33 @@ public class ConfigurationTest {
     }
 
     @Test
+    public void testPropertyNamesFromConfig() {
+        System.setProperty(CLI_ARGS, "--spi-client-registration-openid-connect-static-jwk-url=http://c.jwk.url");
+        Config.Scope config = initConfig("client-registration", "openid-connect");
+        assertEquals(1, config.getPropertyNames().size());
+        assertEquals("http://c.jwk.url", config.get("static-jwk-url"));
+
+        System.setProperty(CLI_ARGS, "--vault-file-path=secrets");
+        config = initConfig("vault", FilesPlainTextVaultProviderFactory.PROVIDER_ID);
+        assertEquals(1, config.getPropertyNames().size());
+        assertEquals("secrets", config.get("dir"));
+
+        System.getProperties().remove(CLI_ARGS);
+        System.setProperty("kc.spi.client-registration.openid-connect.static-jwk-url", "http://c.jwk.url");
+        config = initConfig("client-registration", "openid-connect");
+        assertEquals(1, config.getPropertyNames().size());
+        assertEquals("http://c.jwk.url", config.get("static-jwk-url"));
+
+        System.getProperties().remove(CLI_ARGS);
+        System.getProperties().remove("kc.spi.client-registration.openid-connect.static-jwk-url");
+        putEnvVar("KC_SPI_CLIENT_REGISTRATION_OPENID_CONNECT_STATIC_JWK_URL", "http://c.jwk.url/from-env");
+        config = initConfig("client-registration", "openid-connect");
+        assertEquals(1, config.getPropertyNames().size());
+        assertEquals("http://c.jwk.url/from-env", config.get("static-jwk-url"));
+    }
+
+
+    @Test
     public void testPropertyMapping() {
         System.setProperty(CLI_ARGS, "--db=mariadb" + ARG_SEPARATOR + "--db-url=jdbc:mariadb://localhost/keycloak");
         SmallRyeConfig config = createConfig();
@@ -196,7 +234,7 @@ public class ConfigurationTest {
         System.setProperty(CLI_ARGS, "--db=h2-file");
         SmallRyeConfig config = createConfig();
         assertEquals(QuarkusH2Dialect.class.getName(), config.getConfigValue("quarkus.hibernate-orm.dialect").getValue());
-        assertEquals("jdbc:h2:file:~/data/keycloakdb;;AUTO_SERVER=TRUE", config.getConfigValue("quarkus.datasource.jdbc.url").getValue());
+        assertEquals("jdbc:h2:file:~/data/h2/keycloakdb;;AUTO_SERVER=TRUE", config.getConfigValue("quarkus.datasource.jdbc.url").getValue());
 
         System.setProperty(CLI_ARGS, "--db=h2-mem");
         config = createConfig();
@@ -207,7 +245,7 @@ public class ConfigurationTest {
 
     @Test
     public void testDatabaseKindProperties() {
-        System.setProperty(CLI_ARGS, "--db=postgres-10" + ARG_SEPARATOR + "--db-url=jdbc:postgresql://localhost/keycloak");
+        System.setProperty(CLI_ARGS, "--db=postgres" + ARG_SEPARATOR + "--db-url=jdbc:postgresql://localhost/keycloak");
         SmallRyeConfig config = createConfig();
         assertEquals("io.quarkus.hibernate.orm.runtime.dialect.QuarkusPostgreSQL10Dialect",
             config.getConfigValue("quarkus.hibernate-orm.dialect").getValue());
@@ -222,7 +260,7 @@ public class ConfigurationTest {
         System.setProperty(CLI_ARGS, "--db=h2-file");
         SmallRyeConfig config = createConfig();
         assertEquals(QuarkusH2Dialect.class.getName(), config.getConfigValue("quarkus.hibernate-orm.dialect").getValue());
-        assertEquals("jdbc:h2:file:test-dir" + File.separator + "data" + File.separator + "keycloakdb;;test=test;test1=test1", config.getConfigValue("quarkus.datasource.jdbc.url").getValue());
+        assertEquals("jdbc:h2:file:test-dir" + File.separator + "data" + File.separator + "h2" + File.separator + "keycloakdb;;test=test;test1=test1", config.getConfigValue("quarkus.datasource.jdbc.url").getValue());
 
         System.setProperty("kc.db.url.properties", "?test=test&test1=test1");
         System.setProperty(CLI_ARGS, "--db=mariadb");
