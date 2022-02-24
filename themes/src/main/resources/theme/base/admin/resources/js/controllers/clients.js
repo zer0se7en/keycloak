@@ -1107,7 +1107,7 @@ module.controller('ClientDetailCtrl', function($scope, realm, client, flows, $ro
     }
     $scope.flows.push(emptyFlow)
     $scope.clientFlows.push(emptyFlow)
-
+    var deletedSomeDefaultAcrValue = false;
 
 
     $scope.accessTypes = [
@@ -1439,6 +1439,13 @@ module.controller('ClientDetailCtrl', function($scope, realm, client, flows, $ro
             $scope.useRefreshTokenForClientCredentialsGrant = false;
         }
 
+        var useLowerCaseBearerTypeInTokenResponse = $scope.client.attributes["token.response.type.bearer.lower-case"];
+        if (useLowerCaseBearerTypeInTokenResponse === "true") {
+            $scope.useLowerCaseBearerTypeInTokenResponse = true;
+        } else {
+            $scope.useLowerCaseBearerTypeInTokenResponse = false;
+        }
+
         if ($scope.client.attributes["display.on.consent.screen"]) {
             if ($scope.client.attributes["display.on.consent.screen"] == "true") {
                 $scope.displayOnConsentScreen = true;
@@ -1468,6 +1475,19 @@ module.controller('ClientDetailCtrl', function($scope, realm, client, flows, $ro
             $scope.client.requestUris = $scope.client.attributes["request.uris"].split("##");
         } else {
             $scope.client.requestUris = [];
+        }
+
+        if ($scope.client.attributes["default.acr.values"] && $scope.client.attributes["default.acr.values"].length > 0) {
+            $scope.defaultAcrValues = $scope.client.attributes["default.acr.values"].split("##");
+        } else {
+            $scope.defaultAcrValues = [];
+        }
+        deletedSomeDefaultAcrValue = false;
+
+        try {
+          $scope.acrLoaMap = JSON.parse($scope.client.attributes["acr.loa.map"] || "{}");
+        } catch (e) {
+          $scope.acrLoaMap = {};
         }
     }
 
@@ -1606,6 +1626,24 @@ module.controller('ClientDetailCtrl', function($scope, realm, client, flows, $ro
         $scope.clientEdit.attributes['pkce.code.challenge.method'] = $scope.pkceCodeChallengeMethod;
     };
 
+    $scope.$watch('newAcr', function() {
+            $scope.changed = isChanged();
+        }, true);
+    $scope.$watch('newLoa', function() {
+            $scope.changed = isChanged();
+        }, true);
+    $scope.deleteAcrLoaMapping = function(acr) {
+        delete $scope.acrLoaMap[acr];
+        $scope.changed = true;
+    }
+    $scope.addAcrLoaMapping = function() {
+        if ($scope.newLoa.match(/^[0-9]+$/)) {
+            $scope.acrLoaMap[$scope.newAcr] = $scope.newLoa;
+            $scope.newAcr = $scope.newLoa = "";
+            $scope.changed = true;
+        }
+    }
+
     $scope.changeCibaBackchannelAuthRequestSigningAlg = function() {
         if ($scope.cibaBackchannelAuthRequestSigningAlg === 'any') {
             $scope.clientEdit.attributes['ciba.backchannel.auth.request.signing.alg'] = null;
@@ -1647,6 +1685,13 @@ module.controller('ClientDetailCtrl', function($scope, realm, client, flows, $ro
             return true;
         }
         if ($scope.newRequestUri && $scope.newRequestUri.length > 0) {
+            return true;
+        }
+        if ($scope.newDefaultAcrValue && $scope.newDefaultAcrValue.length > 0) {
+            return true;
+        }
+        if (deletedSomeDefaultAcrValue) return true;
+        if ($scope.newAcr && $scope.newAcr.length > 0 && $scope.newLoa && $scope.newLoa.length > 0) {
             return true;
         }
         return false;
@@ -1761,6 +1806,10 @@ module.controller('ClientDetailCtrl', function($scope, realm, client, flows, $ro
         $scope.changed = isChanged();
     }, true);
 
+    $scope.$watch('newDefaultAcrValue', function() {
+        $scope.changed = isChanged();
+    }, true);
+
     $scope.deleteWebOrigin = function(index) {
         $scope.clientEdit.webOrigins.splice(index, 1);
     }
@@ -1774,6 +1823,15 @@ module.controller('ClientDetailCtrl', function($scope, realm, client, flows, $ro
     $scope.addRequestUri = function() {
         $scope.clientEdit.requestUris.push($scope.newRequestUri);
         $scope.newRequestUri = "";
+    }
+    $scope.deleteDefaultAcrValue = function(index) {
+        $scope.defaultAcrValues.splice(index, 1);
+        deletedSomeDefaultAcrValue = true;
+        $scope.changed = isChanged();
+    }
+    $scope.addDefaultAcrValue = function() {
+        $scope.defaultAcrValues.push($scope.newDefaultAcrValue);
+        $scope.newDefaultAcrValue = "";
     }
     $scope.deleteRedirectUri = function(index) {
         $scope.clientEdit.redirectUris.splice(index, 1);
@@ -1806,11 +1864,25 @@ module.controller('ClientDetailCtrl', function($scope, realm, client, flows, $ro
         }
         delete $scope.clientEdit.requestUris;
 
+        if ($scope.newDefaultAcrValue && $scope.newDefaultAcrValue.length > 0) {
+            $scope.addDefaultAcrValue();
+        }
+        if ($scope.defaultAcrValues && $scope.defaultAcrValues.length > 0) {
+            $scope.clientEdit.attributes["default.acr.values"] = $scope.defaultAcrValues.join("##");
+        } else {
+            $scope.clientEdit.attributes["default.acr.values"] = null;
+        }
+
         if ($scope.samlArtifactBinding == true) {
             $scope.clientEdit.attributes["saml.artifact.binding"] = "true";
         } else {
             $scope.clientEdit.attributes["saml.artifact.binding"] = "false";
         }
+
+        if ($scope.newAcr && $scope.newAcr.length > 0 && $scope.newLoa && $scope.newLoa.length > 0) {
+          $scope.addAcrLoaMapping();
+        }
+
         if ($scope.samlServerSignature == true) {
             $scope.clientEdit.attributes["saml.server.signature"] = "true";
         } else {
@@ -1923,6 +1995,12 @@ module.controller('ClientDetailCtrl', function($scope, realm, client, flows, $ro
             $scope.clientEdit.attributes["client_credentials.use_refresh_token"] = "false";
         }
 
+        if ($scope.useLowerCaseBearerTypeInTokenResponse === true) {
+            $scope.clientEdit.attributes["token.response.type.bearer.lower-case"] = "true";
+        } else {
+            $scope.clientEdit.attributes["token.response.type.bearer.lower-case"] = "false";
+        }
+
         if ($scope.displayOnConsentScreen == true) {
             $scope.clientEdit.attributes["display.on.consent.screen"] = "true";
         } else {
@@ -1940,6 +2018,8 @@ module.controller('ClientDetailCtrl', function($scope, realm, client, flows, $ro
         } else {
             $scope.clientEdit.attributes["backchannel.logout.revoke.offline.tokens"] = "false";
         }
+
+        $scope.clientEdit.attributes["acr.loa.map"] = JSON.stringify($scope.acrLoaMap);
 
         $scope.clientEdit.protocol = $scope.protocol;
         $scope.clientEdit.attributes['saml.signature.algorithm'] = $scope.signatureAlgorithm;
@@ -3228,6 +3308,20 @@ module.controller('ClientScopeDetailCtrl', function($scope, realm, clientScope, 
             $scope.displayOnConsentScreen = true;
         }
 
+        if(serverInfo.featureEnabled("DYNAMIC_SCOPES")) {
+            if ($scope.clientScope.attributes["is.dynamic.scope"]) {
+                if ($scope.clientScope.attributes["is.dynamic.scope"] === "true") {
+                    $scope.isDynamicScope = true;
+                } else {
+                    $scope.isDynamicScope = false;
+                }
+            } else {
+                $scope.isDynamicScope = false;
+            }
+
+            $scope.clientScope.attributes["dynamic.scope.regexp"] = $scope.clientScope.name + ":*";
+        }
+
         if ($scope.clientScope.attributes["include.in.token.scope"]) {
             if ($scope.clientScope.attributes["include.in.token.scope"] == "true") {
                 $scope.includeInTokenScope = true;
@@ -3284,6 +3378,14 @@ module.controller('ClientScopeDetailCtrl', function($scope, realm, clientScope, 
             $scope.clientScope.attributes["display.on.consent.screen"] = "true";
         } else {
             $scope.clientScope.attributes["display.on.consent.screen"] = "false";
+        }
+
+        if(serverInfo.featureEnabled("DYNAMIC_SCOPES")) {
+            if ($scope.isDynamicScope === true) {
+                $scope.clientScope.attributes["is.dynamic.scope"] = "true";
+            } else {
+                $scope.clientScope.attributes["is.dynamic.scope"] = "false";
+            }
         }
 
         if ($scope.includeInTokenScope == true) {

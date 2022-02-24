@@ -17,6 +17,8 @@
 
 package org.keycloak.protocol.oidc;
 
+import static org.keycloak.protocol.oidc.OIDCConfigAttributes.USE_LOWER_CASE_IN_TOKEN_RESPONSE;
+
 import org.keycloak.authentication.authenticators.client.X509ClientAuthenticator;
 import org.keycloak.jose.jws.Algorithm;
 import org.keycloak.models.ClientModel;
@@ -176,6 +178,14 @@ public class OIDCAdvancedConfigWrapper {
         setAttribute(OIDCConfigAttributes.USE_REFRESH_TOKEN, val);
     }
 
+    public boolean isUseLowerCaseInTokenResponse() {
+        return Boolean.parseBoolean(getAttribute(USE_LOWER_CASE_IN_TOKEN_RESPONSE, "false"));
+    }
+
+    public void setUseLowerCaseInTokenResponse(boolean useRefreshToken) {
+        setAttribute(USE_LOWER_CASE_IN_TOKEN_RESPONSE, String.valueOf(useRefreshToken));
+    }
+
     /**
      * If true, then Client Credentials Grant generates refresh token and creates user session. This is not per specs, so it is false by default
      * For the details @see https://tools.ietf.org/html/rfc6749#section-4.4.3
@@ -316,6 +326,18 @@ public class OIDCAdvancedConfigWrapper {
         return getAttribute(OIDCConfigAttributes.FRONT_CHANNEL_LOGOUT_URI);
     }
 
+    public void setLogoUri(String logoUri) {
+        setAttribute(ClientModel.LOGO_URI, logoUri);
+    }
+
+    public void setPolicyUri(String policyUri) {
+        setAttribute(ClientModel.POLICY_URI, policyUri);
+    }
+
+    public void setTosUri(String tosUri) {
+        setAttribute(ClientModel.TOS_URI, tosUri);
+    }
+
     private String getAttribute(String attrKey) {
         if (clientModel != null) {
             return clientModel.getAttribute(attrKey);
@@ -353,13 +375,13 @@ public class OIDCAdvancedConfigWrapper {
         }
     }
 
-    private List<String> getAttributeMultivalued(String attrKey) {
+    public List<String> getAttributeMultivalued(String attrKey) {
         String attrValue = getAttribute(attrKey);
         if (attrValue == null) return Collections.emptyList();
         return Arrays.asList(Constants.CFG_DELIMITER_PATTERN.split(attrValue));
     }
 
-    private void setAttributeMultivalued(String attrKey, List<String> attrValues) {
+    public void setAttributeMultivalued(String attrKey, List<String> attrValues) {
         if (attrValues == null || attrValues.size() == 0) {
             // Remove attribute
             setAttribute(attrKey, null);

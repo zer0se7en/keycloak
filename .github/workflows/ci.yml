@@ -5,6 +5,11 @@ on: [push, pull_request]
 env:
   DEFAULT_JDK_VERSION: 11
 
+concurrency:
+  # Only run once for latest commit per ref and cancel other (previous) runs.
+  group: ci-keycloak-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build
@@ -22,7 +27,7 @@ jobs:
         with:
           path: |
             ~/.m2/repository
-          key: cache-1-${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          key: cache-2-${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: cache-1-${{ runner.os }}-m2
 
       - name: Build Keycloak
@@ -38,7 +43,7 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: keycloak-artifacts.zip
-          retention-days: 2
+          retention-days: 1
           path: |
             ~/.m2/repository/org/keycloak
             !~/.m2/repository/org/keycloak/**/*.tar.gz
@@ -64,7 +69,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: ~/.m2/repository
-          key: cache-1-${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          key: cache-2-${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: cache-1-${{ runner.os }}-m2
       - name: Cleanup org.keycloak artifacts
         run: rm -rf ~/.m2/repository/org/keycloak >/dev/null || true
@@ -76,7 +81,7 @@ jobs:
           name: keycloak-artifacts.zip
       - name: Run unit tests
         run: |
-          if ! mvn install -nsu -B -DskipTestsuite -DskipExamples -f pom.xml; then
+          if ! mvn install -nsu -B -DskipTestsuite -DskipQuarkus -DskipExamples -f pom.xml; then
             find . -path '*/target/surefire-reports/*.xml' | zip -q reports-unit-tests.zip -@
             exit 1
           fi
@@ -105,7 +110,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: ~/.m2/repository
-          key: cache-1-${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          key: cache-2-${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: cache-1-${{ runner.os }}-m2
       - name: Cleanup org.keycloak artifacts
         run: rm -rf ~/.m2/repository/org/keycloak >/dev/null || true
@@ -153,7 +158,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: ~/.m2/repository
-          key: cache-1-${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          key: cache-2-${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: cache-1-${{ runner.os }}-m2
 
       - name: Download built keycloak
@@ -221,7 +226,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: ~/.m2/repository
-          key: cache-1-${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          key: cache-2-${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: cache-1-${{ runner.os }}-m2
 
       - name: Cleanup org.keycloak artifacts
@@ -288,7 +293,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: ~/.m2/repository
-          key: cache-1-${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          key: cache-2-${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: cache-1-${{ runner.os }}-m2
 
       - name: Cleanup org.keycloak artifacts
@@ -338,7 +343,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: ~/.m2/repository
-          key: cache-1-${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          key: cache-2-${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: cache-1-${{ runner.os }}-m2
       - name: Cleanup org.keycloak artifacts
         run: rm -rf ~/.m2/repository/org/keycloak >/dev/null || true
@@ -373,6 +378,69 @@ jobs:
           path: reports-quarkus-cluster-tests.zip
           if-no-files-found: ignore
 
+  ### Tests: Quarkus distribution
+
+  quarkus-tests:
+    name: Quarkus Tests
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      MAVEN_OPTS: -Xmx1024m
+    steps:
+      - uses: actions/checkout@v2
+      - name: Cache Maven packages
+        uses: actions/cache@v2
+        with:
+          path: ~/.m2/repository
+          key: cache-2-${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: cache-1-${{ runner.os }}-m2
+      - name: Cleanup org.keycloak artifacts
+        run: rm -rf ~/.m2/repository/org/keycloak >/dev/null || true
+
+      - name: Download built keycloak
+        id: download-keycloak
+        uses: actions/download-artifact@v2
+        with:
+          path: ~/.m2/repository/org/keycloak/
+          name: keycloak-artifacts.zip
+      - uses: actions/setup-java@v1
+        with:
+          java-version: ${{ env.DEFAULT_JDK_VERSION }}
+      - name: Update maven settings
+        run: mkdir -p ~/.m2 ; cp .github/settings.xml ~/.m2/
+
+      - name: Prepare the local distribution archives
+        run: mvn clean install -DskipTests -Pdistribution
+
+      - name: Run Quarkus Integration Tests
+        run: |
+          mvn clean install -nsu -B -f quarkus/tests/pom.xml | misc/log/trimmer.sh
+          TEST_RESULT=${PIPESTATUS[0]}
+          find . -path '*/target/surefire-reports/*.xml' | zip -q reports-quarkus-tests.zip -@
+          exit $TEST_RESULT
+
+      - name: Run Quarkus Storage Tests
+        run: |
+          mvn clean install -nsu -B -f quarkus/tests/pom.xml -Ptest-database -Dtest=PostgreSQLStartDatabaseTest | misc/log/trimmer.sh
+          TEST_RESULT=${PIPESTATUS[0]}
+          find . -path '*/target/surefire-reports/*.xml' | zip -q reports-quarkus-tests.zip -@
+          exit $TEST_RESULT
+
+      - name: Run Quarkus Tests in Docker
+        run: |
+          mvn clean install -nsu -B -f quarkus/tests/pom.xml -Dkc.quarkus.tests.dist=docker | misc/log/trimmer.sh
+          TEST_RESULT=${PIPESTATUS[0]}
+          exit $TEST_RESULT
+
+      - name: Quarkus test reports
+        uses: actions/upload-artifact@v2
+        if: failure()
+        with:
+          name: reports-quarkus-tests
+          retention-days: 14
+          path: reports-quarkus-tests.zip
+          if-no-files-found: ignore
+
   quickstarts-tests:
     name: Quickstarts Tests
     needs: build
@@ -396,7 +464,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: ~/.m2/repository
-          key: cache-1-${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          key: cache-2-${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: cache-1-${{ runner.os }}-m2
       - name: Cleanup org.keycloak artifacts
         run: rm -rf ~/.m2/repository/org/keycloak >/dev/null || true

@@ -19,9 +19,14 @@ package org.keycloak.quarkus.runtime.cli.command;
 
 import static org.keycloak.quarkus.runtime.cli.Picocli.NO_PARAM_LABEL;
 
+import org.keycloak.quarkus.runtime.Environment;
+import org.keycloak.quarkus.runtime.cli.ExecutionExceptionHandler;
+import org.keycloak.quarkus.runtime.configuration.KeycloakConfigSourceProvider;
+import org.keycloak.quarkus.runtime.configuration.KeycloakPropertiesConfigSource;
+
+import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
-import picocli.CommandLine.ScopeType;
 
 @Command(name = "keycloak",
         header = {
@@ -29,7 +34,10 @@ import picocli.CommandLine.ScopeType;
                 "",
                 "Find more information at: https://www.keycloak.org/docs/latest"
         },
-        description = "%nUse this command-line tool to manage your Keycloak cluster.",
+        description = {
+                "%nUse this command-line tool to manage your Keycloak cluster.",
+                "Make sure the command is available on your \"PATH\" or prefix it with \"./\" (e.g.: \"./${COMMAND-NAME}\") to execute from the current folder."
+        },
         footerHeading = "Examples:",
         footer = { "  Start the server in development mode for local development or testing:%n%n"
                 + "      $ ${COMMAND-NAME} start-dev%n%n"
@@ -49,9 +57,6 @@ import picocli.CommandLine.ScopeType;
             "JVM: ${java.version} (${java.vendor} ${java.vm.name} ${java.vm.version})",
             "OS: ${os.name} ${os.version} ${os.arch}"
         },
-        optionListHeading = "Options:",
-        commandListHeading = "Commands:",
-        abbreviateSynopsis = true,
         subcommands = {
                 Build.class,
                 Start.class,
@@ -63,10 +68,13 @@ import picocli.CommandLine.ScopeType;
         })
 public final class Main {
 
-    @Option(names = "-D<key>=<value>",
-            description = "Set a Java system property",
-            order = 0)
-    Boolean sysProps;
+    public static final String PROFILE_SHORT_NAME = "-pf";
+    public static final String PROFILE_LONG_NAME = "--profile";
+    public static final String CONFIG_FILE_SHORT_NAME = "-cf";
+    public static final String CONFIG_FILE_LONG_NAME = "--config-file";
+
+    @CommandLine.Spec
+    CommandLine.Model.CommandSpec spec;
 
     @Option(names = { "-h", "--help" },
             description = "This help message.",
@@ -80,7 +88,24 @@ public final class Main {
 
     @Option(names = { "-v", "--verbose" },
             description = "Print out error details when running this command.",
-            paramLabel = NO_PARAM_LABEL,
-            scope = ScopeType.INHERIT)
-    Boolean verbose;
+            paramLabel = NO_PARAM_LABEL)
+    public void setVerbose(boolean verbose) {
+        ExecutionExceptionHandler exceptionHandler = (ExecutionExceptionHandler) spec.commandLine().getExecutionExceptionHandler();
+        exceptionHandler.setVerbose(verbose);
+    }
+
+    @Option(names = { PROFILE_SHORT_NAME, PROFILE_LONG_NAME },
+            hidden = true,
+            description = "Set the profile. Use 'dev' profile to enable development mode.")
+    public void setProfile(String profile) {
+        Environment.setProfile(profile);
+    }
+
+    @Option(names = { CONFIG_FILE_SHORT_NAME, CONFIG_FILE_LONG_NAME },
+            arity = "1",
+            description = "Set the path to a configuration file. By default, configuration properties are read from the \"keycloak.conf\" file in the \"conf\" directory.",
+            paramLabel = "file")
+    public void setConfigFile(String path) {
+        System.setProperty(KeycloakPropertiesConfigSource.KEYCLOAK_CONFIG_FILE_PROP, path);
+    }
 }

@@ -16,21 +16,27 @@
  */
 package org.keycloak.quarkus.runtime.configuration.mappers;
 
+import static org.keycloak.quarkus.runtime.configuration.Configuration.OPTION_PART_SEPARATOR;
+import static org.keycloak.quarkus.runtime.configuration.Configuration.OPTION_PART_SEPARATOR_CHAR;
+import static org.keycloak.quarkus.runtime.configuration.Configuration.toCliFormat;
+import static org.keycloak.quarkus.runtime.configuration.Configuration.toEnvVarFormat;
+
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.function.BiFunction;
 
 import io.smallrye.config.ConfigSourceInterceptorContext;
 import io.smallrye.config.ConfigValue;
+
 import org.keycloak.quarkus.runtime.configuration.MicroProfileConfigProvider;
 
 public class PropertyMapper {
 
     static PropertyMapper IDENTITY = new PropertyMapper(null, null, null, null, null,
-            false,null, null, false,Collections.emptyList(),null) {
+            false,null, null, false,Collections.emptyList(),null, true) {
         @Override
-        public ConfigValue getOrDefault(String name, ConfigSourceInterceptorContext context, ConfigValue current) {
-            return current;
+        public ConfigValue getConfigValue(String name, ConfigSourceInterceptorContext context) {
+            return context.proceed(name);
         }
     };
 
@@ -45,9 +51,13 @@ public class PropertyMapper {
     private final Iterable<String> expectedValues;
     private final ConfigCategory category;
     private final String paramLabel;
+    private final boolean hidden;
+    private final String envVarFormat;
+    private String cliFormat;
 
     PropertyMapper(String from, String to, String defaultValue, BiFunction<String, ConfigSourceInterceptorContext, String> mapper,
-            String mapFrom, boolean buildTime, String description, String paramLabel, boolean mask, Iterable<String> expectedValues, ConfigCategory category) {
+            String mapFrom, boolean buildTime, String description, String paramLabel, boolean mask, Iterable<String> expectedValues,
+            ConfigCategory category, boolean hidden) {
         this.from = MicroProfileConfigProvider.NS_KEYCLOAK_PREFIX + from;
         this.to = to == null ? this.from : to;
         this.defaultValue = defaultValue;
@@ -59,6 +69,9 @@ public class PropertyMapper {
         this.mask = mask;
         this.expectedValues = expectedValues == null ? Collections.emptyList() : expectedValues;
         this.category = category != null ? category : ConfigCategory.GENERAL;
+        this.hidden = hidden;
+        this.cliFormat = toCliFormat(from);
+        this.envVarFormat = toEnvVarFormat(this.from);
     }
 
     public static PropertyMapper.Builder builder(String fromProp, String toProp) {
@@ -73,54 +86,56 @@ public class PropertyMapper {
         return value;
     }
 
-    ConfigValue getOrDefault(ConfigSourceInterceptorContext context, ConfigValue current) {
-        return getOrDefault(null, context, current);        
+    ConfigValue getConfigValue(ConfigSourceInterceptorContext context) {
+        return getConfigValue(to, context);
     }
 
-    ConfigValue getOrDefault(String name, ConfigSourceInterceptorContext context, ConfigValue current) {
+    ConfigValue getConfigValue(String name, ConfigSourceInterceptorContext context) {
         String from = this.from;
 
-        if (to != null && to.endsWith(".")) {
+        if (to != null && to.endsWith(OPTION_PART_SEPARATOR)) {
             // in case mapping is based on prefixes instead of full property names
-            from = name.replace(to.substring(0, to.lastIndexOf('.')), from.substring(0, from.lastIndexOf('.')));
+            from = name.replace(to.substring(0, to.lastIndexOf('.')), from.substring(0, from.lastIndexOf(OPTION_PART_SEPARATOR_CHAR)));
         }
 
-        // try to obtain the value for the property we want to map
+        // try to obtain the value for the property we want to map first
         ConfigValue config = context.proceed(from);
 
         if (config == null) {
             if (mapFrom != null) {
                 // if the property we want to map depends on another one, we use the value from the other property to call the mapper
-                String parentKey = MicroProfileConfigProvider.NS_KEYCLOAK + "." + mapFrom;
+                String parentKey = MicroProfileConfigProvider.NS_KEYCLOAK_PREFIX + mapFrom;
                 ConfigValue parentValue = context.proceed(parentKey);
 
-                if (parentValue != null) {
-                    ConfigValue value = transformValue(parentValue.getValue(), context);
+                if (parentValue == null) {
+                    // parent value not explicitly set, try to resolve the default value set to the parent property
+                    PropertyMapper parentMapper = PropertyMappers.getMapper(parentKey);
 
-                    if (value != null) {
-                        return value;
+                    if (parentMapper != null) {
+                        parentValue = ConfigValue.builder().withValue(parentMapper.getDefaultValue()).build();
                     }
                 }
-            }
 
-            // if not defined, return the current value from the property as a default if the property is not explicitly set
-            if (defaultValue == null
-                    || (current != null && !current.getConfigSourceName().equalsIgnoreCase("default values"))) {
-                if (defaultValue == null && mapper != null) {
-                    String value = current == null ? null : current.getValue();
-                    return ConfigValue.builder().withName(to).withValue(mapper.apply(value, context)).build();
+                if (parentValue != null) {
+                    return transformValue(parentValue.getValue(), context);
                 }
-                return current;
             }
 
-            if (mapper != null) {
+            if (defaultValue != null) {
                 return transformValue(defaultValue, context);
             }
-            
-            return ConfigValue.builder().withName(to).withValue(defaultValue).build();
+
+            // now tries any defaults from quarkus
+            ConfigValue current = context.proceed(name);
+
+            if (current != null) {
+                return transformValue(current.getValue(), context);
+            }
+
+            return current;
         }
 
-        if (mapFrom != null) {
+        if (config.getName().equals(name)) {
             return config;
         }
 
@@ -128,7 +143,7 @@ public class PropertyMapper {
 
         // we always fallback to the current value from the property we are mapping
         if (value == null) {
-            return current;
+            return context.proceed(name);
         }
 
         return value;
@@ -152,6 +167,34 @@ public class PropertyMapper {
         return category;
     }
 
+    public boolean isHidden() {
+        return hidden;
+    }
+
+    public boolean isBuildTime() {
+        return buildTime;
+    }
+
+    public String getTo() {
+        return to;
+    }
+
+    public String getParamLabel() {
+        return paramLabel;
+    }
+
+    public String getCliFormat() {
+        return cliFormat;
+    }
+
+    public String getEnvVarFormat() {
+        return envVarFormat;
+    }
+
+    boolean isMask() {
+        return mask;
+    }
+
     private ConfigValue transformValue(String value, ConfigSourceInterceptorContext context) {
         if (value == null) {
             return null;
@@ -170,22 +213,6 @@ public class PropertyMapper {
         return null;
     }
 
-    boolean isBuildTime() {
-        return buildTime;
-    }
-
-    boolean isMask() {
-        return mask;
-    }
-
-    public String getTo() {
-        return to;
-    }
-
-    public String getParamLabel() {
-        return paramLabel;
-    }
-
     public static class Builder {
 
         private String from;
@@ -199,6 +226,7 @@ public class PropertyMapper {
         private boolean isMasked = false;
         private ConfigCategory category = ConfigCategory.GENERAL;
         private String paramLabel;
+        private boolean hidden;
 
         public Builder(ConfigCategory category) {
             this.category = category;
@@ -273,12 +301,20 @@ public class PropertyMapper {
         public Builder type(Class<Boolean> type) {
             if (Boolean.class.equals(type)) {
                 expectedValues(Boolean.TRUE.toString(), Boolean.FALSE.toString());
+                paramLabel(defaultValue == null ? "true|false" : defaultValue);
+                defaultValue(defaultValue == null ? Boolean.FALSE.toString() : defaultValue);
             }
             return this;
         }
 
+        public Builder hidden(boolean hidden) {
+            this.hidden = hidden;
+            return this;
+        }
+
         public PropertyMapper build() {
-            return new PropertyMapper(from, to, defaultValue, mapper, mapFrom, isBuildTimeProperty, description, paramLabel, isMasked, expectedValues, category);
+            return new PropertyMapper(from, to, defaultValue, mapper, mapFrom, isBuildTimeProperty, description, paramLabel,
+                    isMasked, expectedValues, category, hidden);
         }
     }
 }

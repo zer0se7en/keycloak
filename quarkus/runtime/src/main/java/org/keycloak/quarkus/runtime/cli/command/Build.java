@@ -18,10 +18,12 @@
 package org.keycloak.quarkus.runtime.cli.command;
 
 import static org.keycloak.quarkus.runtime.Environment.getHomePath;
-import static org.keycloak.quarkus.runtime.cli.Picocli.error;
+import static org.keycloak.quarkus.runtime.Environment.isDevMode;
 import static org.keycloak.quarkus.runtime.cli.Picocli.println;
+import static org.keycloak.quarkus.runtime.configuration.ConfigArgsConfigSource.getAllCliArgs;
 
 import org.keycloak.quarkus.runtime.Environment;
+import org.keycloak.quarkus.runtime.Messages;
 
 import io.quarkus.bootstrap.runner.QuarkusEntryPoint;
 import io.quarkus.bootstrap.runner.RunnerClassLoader;
@@ -43,12 +45,10 @@ import picocli.CommandLine.Command;
             "Consider running this command before running the server in production for an optimal runtime."
         },
         footerHeading = "Examples:",
-        footer = "  Optimize the server based on a profile configuration:%n%n"
-                + "      $ ${PARENT-COMMAND-FULL-NAME:-$PARENTCOMMAND} ${COMMAND-NAME} --profile=prod%n%n"
-                + "  Change database settings:%n%n"
-                + "      $ ${PARENT-COMMAND-FULL-NAME:-$PARENTCOMMAND} ${COMMAND-NAME} --db=postgres [--db-url][--db-username][--db-password]%n%n"
+        footer = "  Change the database vendor:%n%n"
+                + "      $ ${PARENT-COMMAND-FULL-NAME:-$PARENTCOMMAND} ${COMMAND-NAME} --db=postgres%n%n"
                 + "  Enable a feature:%n%n"
-                + "      $ ${PARENT-COMMAND-FULL-NAME:-$PARENTCOMMAND} ${COMMAND-NAME} --features-<feature_name>=[enabled|disabled]%n%n"
+                + "      $ ${PARENT-COMMAND-FULL-NAME:-$PARENTCOMMAND} ${COMMAND-NAME} --features=<feature_name>%n%n"
                 + "  Or alternatively, enable all tech preview features:%n%n"
                 + "      $ ${PARENT-COMMAND-FULL-NAME:-$PARENTCOMMAND} ${COMMAND-NAME} --features=preview%n%n"
                 + "  Enable metrics:%n%n"
@@ -57,28 +57,37 @@ import picocli.CommandLine.Command;
                 + "      $ ${PARENT-COMMAND-FULL-NAME:-$PARENTCOMMAND} ${COMMAND-NAME} --http-relative-path=/auth%n%n"
                 + "You can also use the \"--auto-build\" option when starting the server to avoid running this command every time you change a configuration:%n%n"
                 + "    $ ${PARENT-COMMAND-FULL-NAME:-$PARENTCOMMAND} start --auto-build <OPTIONS>%n%n"
-                + "By doing that you have an additional overhead when the server is starting.",
-        abbreviateSynopsis = true,
-        optionListHeading = "Options:",
-        commandListHeading = "Commands:")
+                + "By doing that you have an additional overhead when the server is starting.%n%n"
+                + "Use '${PARENT-COMMAND-FULL-NAME:-$PARENTCOMMAND} ${COMMAND-NAME} --help-all' to list all available options, including the start options.")
 public final class Build extends AbstractCommand implements Runnable {
 
     public static final String NAME = "build";
 
     @Override
     public void run() {
+        exitWithErrorIfDevProfileIsSetAndNotStartDev();
+
         System.setProperty("quarkus.launch.rebuild", "true");
         println(spec.commandLine(), "Updating the configuration and installing your custom providers, if any. Please wait.");
 
         try {
             beforeReaugmentationOnWindows();
             QuarkusEntryPoint.main();
-            println(spec.commandLine(), "Server configuration updated and persisted. Run the following command to review the configuration:\n");
-            println(spec.commandLine(), "\t" + Environment.getCommand() + " show-config\n");
+
+            if (!isDevMode()) {
+                println(spec.commandLine(), "Server configuration updated and persisted. Run the following command to review the configuration:\n");
+                println(spec.commandLine(), "\t" + Environment.getCommand() + " show-config\n");
+            }
         } catch (Throwable throwable) {
-            error(spec.commandLine(), "Failed to update server configuration.", throwable);
+            executionError(spec.commandLine(), "Failed to update server configuration.", throwable);
         } finally {
             cleanTempResources();
+        }
+    }
+
+    private void exitWithErrorIfDevProfileIsSetAndNotStartDev() {
+        if (Environment.isDevProfile() && !getAllCliArgs().contains(StartDev.NAME)) {
+            executionError(spec.commandLine(), Messages.devProfileNotAllowedError(NAME));
         }
     }
 

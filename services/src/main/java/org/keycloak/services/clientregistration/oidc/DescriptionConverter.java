@@ -28,12 +28,14 @@ import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jwk.JWKParser;
 import org.keycloak.jose.jws.Algorithm;
 import org.keycloak.models.CibaConfig;
+import org.keycloak.models.Constants;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.ParConfig;
 import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.protocol.oidc.OIDCAdvancedConfigWrapper;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.protocol.oidc.mappers.PairwiseSubMapperHelper;
+import org.keycloak.protocol.oidc.utils.AcrUtils;
 import org.keycloak.protocol.oidc.utils.AuthorizeClientUtil;
 import org.keycloak.protocol.oidc.utils.OIDCResponseType;
 import org.keycloak.protocol.oidc.utils.PairwiseSubMapperUtils;
@@ -192,6 +194,18 @@ public class DescriptionConverter {
             configWrapper.setBackchannelLogoutRevokeOfflineTokens(clientOIDC.getBackchannelLogoutRevokeOfflineTokens());
         }
 
+        if (clientOIDC.getLogoUri() != null) {
+            configWrapper.setLogoUri(clientOIDC.getLogoUri());
+        }
+
+        if (clientOIDC.getPolicyUri() != null) {
+            configWrapper.setPolicyUri(clientOIDC.getPolicyUri());
+        }
+
+        if (clientOIDC.getTosUri() != null) {
+            configWrapper.setTosUri(clientOIDC.getTosUri());
+        }
+
         // CIBA
         String backchannelTokenDeliveryMode = clientOIDC.getBackchannelTokenDeliveryMode();
         if (backchannelTokenDeliveryMode != null) {
@@ -221,6 +235,10 @@ public class DescriptionConverter {
         }
 
         configWrapper.setFrontChannelLogoutUrl(Optional.ofNullable(clientOIDC.getFrontChannelLogoutUri()).orElse(null));
+
+        if (clientOIDC.getDefaultAcrValues() != null) {
+            configWrapper.setAttributeMultivalued(Constants.DEFAULT_ACR_VALUES, clientOIDC.getDefaultAcrValues());
+        }
 
         return client;
     }
@@ -401,6 +419,11 @@ public class DescriptionConverter {
         }
 
         response.setFrontChannelLogoutUri(config.getFrontChannelLogoutUrl());
+
+        List<String> defaultAcrValues = config.getAttributeMultivalued(Constants.DEFAULT_ACR_VALUES);
+        if (!defaultAcrValues.isEmpty()) {
+            response.setDefaultAcrValues(defaultAcrValues);
+        }
 
         return response;
     }
