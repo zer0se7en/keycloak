@@ -17,6 +17,7 @@
 package org.keycloak.testsuite;
 
 import io.appium.java_client.AppiumDriver;
+import jakarta.ws.rs.core.Response;
 import org.apache.commons.configuration.ConfigurationException;
 import org.apache.commons.configuration.PropertiesConfiguration;
 import org.jboss.arquillian.container.test.api.RunAsClient;
@@ -26,6 +27,7 @@ import org.jboss.arquillian.test.api.ArquillianResource;
 import org.jboss.logging.Logger;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.runner.RunWith;
 import org.junit.runners.model.TestTimedOutException;
 import org.keycloak.admin.client.Keycloak;
@@ -33,14 +35,18 @@ import org.keycloak.admin.client.resource.AuthenticationManagementResource;
 import org.keycloak.admin.client.resource.RealmsResource;
 import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.admin.client.resource.UsersResource;
-import org.keycloak.common.Profile;
 import org.keycloak.common.util.KeycloakUriBuilder;
 import org.keycloak.common.util.Time;
+import org.keycloak.models.RealmProvider;
+import org.keycloak.models.cache.CacheRealmProvider;
+import org.keycloak.models.cache.UserCache;
+import org.keycloak.models.utils.TimeBasedOTP;
+import org.keycloak.protocol.oidc.OIDCAdvancedConfigWrapper;
+import org.keycloak.provider.Provider;
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.RequiredActionProviderRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
-import org.keycloak.services.resources.account.AccountFormService;
 import org.keycloak.testsuite.admin.ApiUtil;
 import org.keycloak.testsuite.arquillian.AuthServerTestEnricher;
 import org.keycloak.testsuite.arquillian.KcArquillian;
@@ -50,20 +56,19 @@ import org.keycloak.testsuite.auth.page.AuthRealm;
 import org.keycloak.testsuite.auth.page.AuthServer;
 import org.keycloak.testsuite.auth.page.AuthServerContextRoot;
 import org.keycloak.testsuite.auth.page.WelcomePage;
-import org.keycloak.testsuite.auth.page.account.Account;
 import org.keycloak.testsuite.auth.page.login.OIDCLogin;
 import org.keycloak.testsuite.auth.page.login.UpdatePassword;
 import org.keycloak.testsuite.client.KeycloakTestingClient;
 import org.keycloak.testsuite.pages.LoginPasswordUpdatePage;
+import org.keycloak.testsuite.util.CryptoInitRule;
 import org.keycloak.testsuite.util.DroneUtils;
 import org.keycloak.testsuite.util.OAuthClient;
 import org.keycloak.testsuite.util.TestCleanup;
 import org.keycloak.testsuite.util.TestEventsLogger;
 import org.openqa.selenium.WebDriver;
 
-import javax.ws.rs.NotFoundException;
-import javax.ws.rs.core.UriBuilder;
-
+import jakarta.ws.rs.NotFoundException;
+import jakarta.ws.rs.core.UriBuilder;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PipedInputStream;
@@ -77,21 +82,27 @@ import java.util.Calendar;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Scanner;
-import java.util.concurrent.*;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertThat;
 import static org.keycloak.testsuite.admin.Users.setPasswordFor;
+import static org.keycloak.testsuite.auth.page.AuthRealm.MASTER;
 import static org.keycloak.testsuite.util.ServerURLs.AUTH_SERVER_HOST;
 import static org.keycloak.testsuite.util.ServerURLs.AUTH_SERVER_PORT;
 import static org.keycloak.testsuite.util.ServerURLs.AUTH_SERVER_SCHEME;
 import static org.keycloak.testsuite.util.ServerURLs.AUTH_SERVER_SSL_REQUIRED;
-import static org.keycloak.testsuite.auth.page.AuthRealm.MASTER;
-import static org.keycloak.testsuite.util.URLUtils.navigateToUri;
 import static org.keycloak.testsuite.util.ServerURLs.removeDefaultPorts;
+import static org.keycloak.testsuite.util.URLUtils.navigateToUri;
 
 /**
  *
@@ -103,6 +114,9 @@ public abstract class AbstractKeycloakTest {
     protected static final String ENGLISH_LOCALE_NAME = "English";
 
     protected Logger log = Logger.getLogger(this.getClass());
+
+    @ClassRule
+    public static CryptoInitRule cryptoInitRule = new CryptoInitRule();
 
     @ArquillianResource
     protected SuiteContext suiteContext;
@@ -129,9 +143,6 @@ public abstract class AbstractKeycloakTest {
 
     @Page
     protected AuthRealm masterRealmPage;
-
-    @Page
-    protected Account accountPage;
 
     @Page
     protected OIDCLogin loginPage;
@@ -180,7 +191,6 @@ public abstract class AbstractKeycloakTest {
         }
 
         oauth.init(driver);
-
     }
 
     public void reconnectAdminClient() throws Exception {
@@ -188,12 +198,29 @@ public abstract class AbstractKeycloakTest {
         adminClient = testContext.getAdminClient();
     }
 
+    /**
+     * Executed before test realms import
+     * <p>
+     * In @Before block
+     */
     protected void beforeAbstractKeycloakTestRealmImport() throws Exception {
     }
-    protected void postAfterAbstractKeycloak() throws Exception {
+
+    /**
+     * Executed after test realms import
+     * <p>
+     * In @Before block
+     */
+    protected void afterAbstractKeycloakTestRealmImport() {
     }
 
-    protected void afterAbstractKeycloakTestRealmImport() {}
+    /**
+     * Executed as the last task of each test case
+     * <p>
+     * In @After block
+     */
+    protected void postAfterAbstractKeycloak() throws Exception {
+    }
 
     @After
     public void afterAbstractKeycloakTest() throws Exception {
@@ -261,7 +288,7 @@ public abstract class AbstractKeycloakTest {
     protected void deleteAllCookiesForRealm(String realmName) {
         // we can't use /auth/realms/{realmName} because some browsers (e.g. Chrome) apparently don't send cookies
         // to JSON pages and therefore can't delete realms cookies there; a non existing page will do just fine
-        navigateToUri(accountPage.getAuthRoot() + "/realms/" + realmName + "/super-random-page");
+        navigateToUri(oauth.SERVER_ROOT + "/auth/realms/" + realmName + "/super-random-page");
         log.info("deleting cookies in '" + realmName + "' realm");
         driver.manage().deleteAllCookies();
     }
@@ -555,6 +582,23 @@ public abstract class AbstractKeycloakTest {
         return user;
     }
 
+    protected void createAppClientInRealm(String realm) {
+        ClientRepresentation client = new ClientRepresentation();
+        client.setClientId("test-app");
+        client.setName("test-app");
+        client.setSecret("password");
+        client.setEnabled(true);
+        client.setDirectAccessGrantsEnabled(true);
+
+        client.setRedirectUris(Collections.singletonList(oauth.SERVER_ROOT + "/auth/*"));
+        client.setBaseUrl(oauth.SERVER_ROOT + "/auth/realms/" + realm + "/app");
+
+        OIDCAdvancedConfigWrapper.fromClientRepresentation(client).setPostLogoutRedirectUris(Collections.singletonList("+"));
+
+        Response response = adminClient.realm(realm).clients().create(client);
+        response.close();
+    }
+
     public void setRequiredActionEnabled(String realm, String requiredAction, boolean enabled, boolean defaultAction) {
         AuthenticationManagementResource managementResource = adminClient.realm(realm).flows();
 
@@ -612,6 +656,7 @@ public abstract class AbstractKeycloakTest {
 
     /**
      * Sets time offset in seconds that will be added to Time.currentTime() and Time.currentTimeMillis() both for client and server.
+     * Moves time on the remote Infinispan server as well if the HotRod storage is used.
      *
      * @param offset
      */
@@ -627,6 +672,13 @@ public abstract class AbstractKeycloakTest {
         log.debugv("Reset time offset, response {0}", response);
     }
 
+    public void setOtpTimeOffset(int offsetSeconds, TimeBasedOTP otp) {
+        setTimeOffset(offsetSeconds);
+        final Calendar calendar = Calendar.getInstance();
+        calendar.add(Calendar.SECOND, offsetSeconds);
+        otp.setCalendar(calendar);
+    }
+
     public int getCurrentTime() {
         return Time.currentTime();
     }
@@ -635,6 +687,14 @@ public abstract class AbstractKeycloakTest {
         // adminClient depends on Time.offset for auto-refreshing tokens
         Time.setOffset(offset);
         Map result = testingClient.testing().setTimeOffset(Collections.singletonMap("offset", String.valueOf(offset)));
+
+        // force refreshing token after time offset has changed
+        try {
+            adminClient.tokenManager().refreshToken();
+        } catch (RuntimeException e) {
+            adminClient.tokenManager().grantToken();
+        }
+
         return String.valueOf(result);
     }
 
@@ -662,17 +722,6 @@ public abstract class AbstractKeycloakTest {
         return log;
     }
 
-    protected String getAccountRedirectUrl(String realm) {
-        return AccountFormService
-              .loginRedirectUrl(UriBuilder.fromUri(oauth.AUTH_SERVER_ROOT))
-              .build(realm)
-              .toString();
-    }
-
-    protected String getAccountRedirectUrl() {
-        return getAccountRedirectUrl("test");
-    }
-
     protected static InputStream httpsAwareConfigurationStream(InputStream input) throws IOException {
         if (!AUTH_SERVER_SSL_REQUIRED) {
             return input;
@@ -691,12 +740,37 @@ public abstract class AbstractKeycloakTest {
     }
 
     /**
-     * Get product/project name
+     * MapRealmProvider uses session.invalidate() instead of calling e.g. 
+     * session.clients().removeClients(realm); for clients (where clients are being removed one by one)
      *
-     * @return f.e. 'RH-SSO' or 'Keycloak'
+     * Therefore it doesn't call session.users().preRemove(realm, client) for each client.
+     * Due to that JpaUserFederatedStorageProvider.preRemove(realm, client) is not called.
+     * So there remains objects in the database in user federation related tables after realm removal.
+     *
+     * Same for roles etc. 
+     *
+     * Legacy federated storage is NOT supposed to work with map storage, so this method 
+     * returns true if realm provider is "jpa" to be able to skip particular tests.
      */
-    protected String getProjectName() {
-        final boolean isProduct = adminClient.serverInfo().getInfo().getProfileInfo().getName().equals("product");
-        return isProduct ? Profile.PRODUCT_NAME : Profile.PROJECT_NAME;
+    protected boolean isJpaRealmProvider() {
+        return keycloakUsingProviderWithId(RealmProvider.class, "jpa");
+    }
+
+    protected boolean keycloakUsingProviderWithId(Class<? extends Provider> providerClass, String requiredId) {
+        String providerId = testingClient.server()
+                .fetchString(s -> s.getKeycloakSessionFactory().getProviderFactory(providerClass).getId());
+        return Objects.equals(providerId, "\"" + requiredId + "\"");
+    }
+
+    protected boolean isRealmCacheEnabled() {
+        String realmCache = testingClient.server()
+                .fetchString(s -> s.getKeycloakSessionFactory().getProviderFactory(CacheRealmProvider.class));
+        return Objects.nonNull(realmCache);
+    }
+
+    protected boolean isUserCacheEnabled() {
+        String userCache = testingClient.server()
+                .fetchString(s -> s.getKeycloakSessionFactory().getProviderFactory(UserCache.class));
+        return Objects.nonNull(userCache);
     }
 }

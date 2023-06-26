@@ -22,7 +22,6 @@ import org.keycloak.models.map.annotations.GenerateHotRodEntityImplementation;
 import org.keycloak.models.map.storage.hotRod.common.AbstractHotRodEntity;
 import org.keycloak.models.map.storage.hotRod.common.HotRodPair;
 
-import java.util.Objects;
 import java.util.Set;
 
 @GenerateHotRodEntityImplementation(implementInterface = "org.keycloak.models.map.client.MapProtocolMapperEntity")
@@ -35,10 +34,6 @@ public class HotRodProtocolMapperEntity extends AbstractHotRodEntity {
     public String protocol;
     @ProtoField(number = 4)
     public String protocolMapper;
-//    @ProtoField(number = 5, defaultValue = "false")
-//    public boolean consentRequired;
-//    @ProtoField(number = 5)
-//    public String consentText;
     @ProtoField(number = 5)
     public Set<HotRodPair<String, String>> config;
 

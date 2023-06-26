@@ -23,9 +23,11 @@ import org.infinispan.persistence.remote.RemoteStore;
 import org.jboss.logging.Logger;
 import org.keycloak.Config;
 import org.keycloak.cluster.ClusterProvider;
+import org.keycloak.common.Profile;
 import org.keycloak.common.util.Environment;
 import org.keycloak.common.util.Time;
 import org.keycloak.connections.infinispan.InfinispanConnectionProvider;
+import org.keycloak.models.ClientModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.models.KeycloakSessionTask;
@@ -58,16 +60,16 @@ import org.keycloak.models.sessions.infinispan.util.SessionTimeouts;
 import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.models.utils.PostMigrationEvent;
 import org.keycloak.models.utils.ResetTimeOffsetEvent;
+import org.keycloak.provider.EnvironmentDependentProviderFactory;
 import org.keycloak.provider.ProviderEvent;
 import org.keycloak.provider.ProviderEventListener;
 
 import java.io.Serializable;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.BiFunction;
 import static org.keycloak.models.sessions.infinispan.InfinispanAuthenticationSessionProviderFactory.PROVIDER_PRIORITY;
 
-public class InfinispanUserSessionProviderFactory implements UserSessionProviderFactory {
+public class InfinispanUserSessionProviderFactory implements UserSessionProviderFactory, EnvironmentDependentProviderFactory {
 
     private static final Logger log = Logger.getLogger(InfinispanUserSessionProviderFactory.class);
 
@@ -163,6 +165,9 @@ public class InfinispanUserSessionProviderFactory implements UserSessionProvider
         return timeout != null ? timeout : Environment.getServerStartupTimeout();
     }
 
+    private int getStalledTimeoutInSeconds(int defaultTimeout) {
+         return config.getInt("sessionPreloadStalledTimeoutInSeconds", defaultTimeout);
+    }
 
     @Override
     public void loadPersistentSessions(final KeycloakSessionFactory sessionFactory, final int maxErrors, final int sessionsPerSegment) {
@@ -178,9 +183,12 @@ public class InfinispanUserSessionProviderFactory implements UserSessionProvider
 
                     InfinispanConnectionProvider connections = session.getProvider(InfinispanConnectionProvider.class);
                     Cache<String, Serializable> workCache = connections.getCache(InfinispanConnectionProvider.WORK_CACHE_NAME);
+                    int defaultStateTransferTimeout = (int) (connections.getCache(InfinispanConnectionProvider.OFFLINE_USER_SESSION_CACHE_NAME)
+                      .getCacheConfiguration().clustering().stateTransfer().timeout() / 1000);
 
                     InfinispanCacheInitializer ispnInitializer = new InfinispanCacheInitializer(sessionFactory, workCache,
-                            new OfflinePersistentUserSessionLoader(sessionsPerSegment), "offlineUserSessions", sessionsPerSegment, maxErrors);
+                            new OfflinePersistentUserSessionLoader(sessionsPerSegment), "offlineUserSessions", sessionsPerSegment, maxErrors,
+                            getStalledTimeoutInSeconds(defaultStateTransferTimeout));
 
                     // DB-lock to ensure that persistent sessions are loaded from DB just on one DC. The other DCs will load them from remote cache.
                     CacheInitializer initializer = new DBLockBasedCacheInitializer(session, ispnInitializer);
@@ -284,7 +292,7 @@ public class InfinispanUserSessionProviderFactory implements UserSessionProvider
     }
 
     private <K, V extends SessionEntity> RemoteCache checkRemoteCache(KeycloakSession session, Cache<K, SessionEntityWrapper<V>> ispnCache, RemoteCacheInvoker.MaxIdleTimeLoader maxIdleLoader,
-                                                                      BiFunction<RealmModel, V, Long> lifespanMsLoader, BiFunction<RealmModel, V, Long> maxIdleTimeMsLoader) {
+                                                                      SessionFunction<V> lifespanMsLoader, SessionFunction<V> maxIdleTimeMsLoader) {
         Set<RemoteStore> remoteStores = InfinispanUtil.getRemoteStores(ispnCache);
 
         if (remoteStores.isEmpty()) {
@@ -324,9 +332,12 @@ public class InfinispanUserSessionProviderFactory implements UserSessionProvider
             public void run(KeycloakSession session) {
                 InfinispanConnectionProvider connections = session.getProvider(InfinispanConnectionProvider.class);
                 Cache<String, Serializable> workCache = connections.getCache(InfinispanConnectionProvider.WORK_CACHE_NAME);
+                int defaultStateTransferTimeout = (int) (connections.getCache(InfinispanConnectionProvider.USER_SESSION_CACHE_NAME)
+                  .getCacheConfiguration().clustering().stateTransfer().timeout() / 1000);
 
                 InfinispanCacheInitializer initializer = new InfinispanCacheInitializer(sessionFactory, workCache,
-                        new RemoteCacheSessionsLoader(cacheName, sessionsPerSegment), "remoteCacheLoad::" + cacheName, sessionsPerSegment, maxErrors);
+                        new RemoteCacheSessionsLoader(cacheName, sessionsPerSegment), "remoteCacheLoad::" + cacheName, sessionsPerSegment, maxErrors,
+                        getStalledTimeoutInSeconds(defaultStateTransferTimeout));
 
                 initializer.initCache();
                 initializer.loadSessions();
@@ -349,6 +360,11 @@ public class InfinispanUserSessionProviderFactory implements UserSessionProvider
     @Override
     public int order() {
         return PROVIDER_PRIORITY;
+    }
+
+    @Override
+    public boolean isSupported() {
+        return !Profile.isFeatureEnabled(Profile.Feature.MAP_STORAGE);
     }
 }
 

@@ -53,6 +53,7 @@ import java.io.StringWriter;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -137,7 +138,19 @@ public class SimpleHttp {
         return this;
     }
 
+    public String getHeader(String name) {
+        if (headers != null) {
+            return headers.get(name);
+        }
+        return null;
+    }
+
     public SimpleHttp json(Object entity) {
+        this.entity = entity;
+        return this;
+    }
+
+    public SimpleHttp entity(HttpEntity entity) {
         this.entity = entity;
         return this;
     }
@@ -242,6 +255,8 @@ public class SimpleHttp {
         if (httpRequest instanceof HttpPost || httpRequest instanceof  HttpPut || httpRequest instanceof HttpPatch) {
             if (params != null) {
                 ((HttpEntityEnclosingRequestBase) httpRequest).setEntity(getFormEntityFromParameter());
+            } else if (entity instanceof HttpEntity) {
+                ((HttpEntityEnclosingRequestBase) httpRequest).setEntity((HttpEntity) entity);
             } else if (entity != null) {
                 if (headers == null || !headers.containsKey(HttpHeaders.CONTENT_TYPE)) {
                     header(HttpHeaders.CONTENT_TYPE, "application/json");
@@ -313,14 +328,15 @@ public class SimpleHttp {
             }
         }
 
-        return new UrlEncodedFormEntity(urlParameters);
+        return new UrlEncodedFormEntity(urlParameters, StandardCharsets.UTF_8);
     }
 
-    public static class Response {
+    public static class Response implements AutoCloseable {
 
         private final HttpResponse response;
         private int statusCode = -1;
         private String responseString;
+        private ContentType contentType;
 
         public Response(HttpResponse response) {
             this.response = response;
@@ -334,7 +350,7 @@ public class SimpleHttp {
                 HttpEntity entity = response.getEntity();
                 if (entity != null) {
                     is = entity.getContent();
-                    ContentType contentType = ContentType.getOrDefault(entity);
+                    contentType = ContentType.getOrDefault(entity);
                     Charset charset = contentType.getCharset();
                     try {
                         HeaderIterator it = response.headerIterator();
@@ -345,7 +361,7 @@ public class SimpleHttp {
                             }
                         }
 
-                        try (InputStreamReader reader = charset == null ? new InputStreamReader(is) :
+                        try (InputStreamReader reader = charset == null ? new InputStreamReader(is, StandardCharsets.UTF_8) :
                                 new InputStreamReader(is, charset)) {
 
                             StringWriter writer = new StringWriter();
@@ -408,6 +424,27 @@ public class SimpleHttp {
             }
 
             return null;
+        }
+
+        public Header[] getAllHeaders() throws IOException {
+            readResponse();
+            return response.getAllHeaders();
+        }
+
+        public ContentType getContentType() throws IOException {
+            readResponse();
+            return contentType;
+        }
+
+        public Charset getContentTypeCharset() throws IOException {
+            readResponse();
+            if (contentType != null) {
+                Charset charset = contentType.getCharset();
+                if (charset != null) {
+                    return charset;
+                }
+            }
+            return StandardCharsets.UTF_8;
         }
 
         public void close() throws IOException {

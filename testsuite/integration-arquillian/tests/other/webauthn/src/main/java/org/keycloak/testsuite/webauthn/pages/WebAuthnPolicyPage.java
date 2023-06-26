@@ -21,9 +21,7 @@ import com.webauthn4j.data.AttestationConveyancePreference;
 import com.webauthn4j.data.AuthenticatorAttachment;
 import com.webauthn4j.data.UserVerificationRequirement;
 import org.jboss.arquillian.graphene.page.Page;
-import org.keycloak.testsuite.console.page.authentication.Authentication;
 import org.keycloak.testsuite.console.page.fragment.OnOffSwitch;
-import org.keycloak.testsuite.console.page.idp.mappers.MultivaluedStringProperty;
 import org.keycloak.testsuite.webauthn.utils.PropertyRequirement;
 import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.WebElement;
@@ -37,13 +35,14 @@ import static org.keycloak.testsuite.util.UIUtils.getTextInputValue;
 import static org.keycloak.testsuite.util.UIUtils.setTextInputValue;
 import static org.keycloak.testsuite.util.WaitUtils.waitForPageToLoad;
 import static org.keycloak.testsuite.util.WaitUtils.waitUntilElement;
+import static org.keycloak.utils.StringUtil.isNotBlank;
 
 /**
  * Helper class for WebAuthnPolicy Page
  *
  * @author <a href="mailto:mabartos@redhat.com">Martin Bartos</a>
  */
-public class WebAuthnPolicyPage extends Authentication {
+public class WebAuthnPolicyPage {
 
     @FindBy(id = "name")
     private WebElement rpEntityName;
@@ -72,23 +71,11 @@ public class WebAuthnPolicyPage extends Authentication {
     @FindBy(xpath = ".//div[@class='onoffswitch' and ./input[@id='avoidsame']]")
     private OnOffSwitch avoidSameAuthenticatorRegister;
 
-    @Page
-    private MultivaluedAcceptableAaguid acceptableAaguid;
-
     @FindBy(xpath = "//button[text()='Save']")
     private WebElement saveButton;
 
     @FindBy(xpath = "//button[text()='Cancel']")
     private WebElement cancelButton;
-
-    @Override
-    public String getUriFragment() {
-        return getAuthenticationUriFragment() + "/webauthn-policy";
-    }
-
-    public String getAuthenticationUriFragment() {
-        return super.getUriFragment();
-    }
 
     /* Relaying Party Entity Name */
 
@@ -127,11 +114,10 @@ public class WebAuthnPolicyPage extends Authentication {
     }
 
     public AttestationConveyancePreference getAttestationConveyancePreference() {
-        return getRequirementOrNull(() ->
-                AttestationConveyancePreference.create(checkElement(() -> attestationConveyancePreference
-                        .getFirstSelectedOption()
-                        .getText()))
-        );
+        return getRequirementOrNull(() -> {
+            final String value = checkElement(() -> attestationConveyancePreference.getFirstSelectedOption().getText());
+            return isNotBlank(value) ? AttestationConveyancePreference.create(value) : null;
+        });
     }
 
     public void setAttestationConveyancePreference(AttestationConveyancePreference attestation) {
@@ -146,11 +132,10 @@ public class WebAuthnPolicyPage extends Authentication {
     }
 
     public AuthenticatorAttachment getAuthenticatorAttachment() {
-        return getRequirementOrNull(() ->
-                AuthenticatorAttachment.create(checkElement(() -> authenticatorAttachment
-                        .getFirstSelectedOption()
-                        .getText()))
-        );
+        return getRequirementOrNull(() -> {
+            final String value = checkElement(() -> authenticatorAttachment.getFirstSelectedOption().getText());
+            return isNotBlank(value) ? AuthenticatorAttachment.create(value) : null;
+        });
     }
 
     public void setAuthenticatorAttachment(AuthenticatorAttachment attachment) {
@@ -181,11 +166,10 @@ public class WebAuthnPolicyPage extends Authentication {
     }
 
     public UserVerificationRequirement getUserVerification() {
-        return getRequirementOrNull(() ->
-                UserVerificationRequirement.create(checkElement(() -> userVerification
-                        .getFirstSelectedOption()
-                        .getText()))
-        );
+        return getRequirementOrNull(() -> {
+            final String value = checkElement(() -> userVerification.getFirstSelectedOption().getText());
+            return isNotBlank(value) ? UserVerificationRequirement.create(value) : null;
+        });
     }
 
     public void setUserVerification(UserVerificationRequirement verification) {
@@ -212,10 +196,6 @@ public class WebAuthnPolicyPage extends Authentication {
         if (avoidSameAuthenticatorRegistration() != state) {
             checkElement(() -> avoidSameAuthenticatorRegister).setOn(state);
         }
-    }
-
-    public MultivaluedAcceptableAaguid getAcceptableAaguid() {
-        return acceptableAaguid;
     }
 
     /* Buttons */
@@ -256,42 +236,6 @@ public class WebAuthnPolicyPage extends Authentication {
             return supplier.get();
         } catch (IllegalArgumentException e) {
             return null;
-        }
-    }
-
-    public class MultivaluedAcceptableAaguid extends MultivaluedStringProperty {
-
-        @FindBy(className = "webauthn-acceptable-aaguid")
-        private List<WebElement> aaguids;
-
-        @FindBy(id = "newAcceptableAaguid")
-        private WebElement newAaguid;
-
-        @FindBy(xpath = "//button[@data-ng-click='deleteAcceptableAaguid($index)']")
-        private List<WebElement> minusButtons;
-
-        @FindBy(xpath = "//button[@data-ng-click='newAcceptableAaguid.length > 0 && addAcceptableAaguid()']")
-        private WebElement plusButton;
-
-        @Override
-        public List<WebElement> getItems() {
-            return checkElement(() -> aaguids);
-        }
-
-        @Override
-        public void addItem(String item) {
-            setTextInputValue(checkElement(() -> newAaguid), item);
-            clickAddItem();
-        }
-
-        @Override
-        protected List<WebElement> getMinusButtons() {
-            return minusButtons;
-        }
-
-        @Override
-        protected WebElement getPlusButton() {
-            return plusButton;
         }
     }
 }

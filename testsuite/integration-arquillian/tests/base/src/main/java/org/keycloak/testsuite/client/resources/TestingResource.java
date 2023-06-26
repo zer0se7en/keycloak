@@ -18,6 +18,7 @@
 package org.keycloak.testsuite.client.resources;
 
 import org.jboss.resteasy.annotations.cache.NoCache;
+import org.keycloak.common.Profile;
 import org.keycloak.representations.idm.AdminEventRepresentation;
 import org.keycloak.representations.idm.AuthenticationFlowRepresentation;
 import org.keycloak.representations.idm.EventRepresentation;
@@ -26,18 +27,20 @@ import org.keycloak.testsuite.components.TestProvider;
 import org.keycloak.testsuite.rest.representation.AuthenticatorState;
 import org.keycloak.utils.MediaType;
 
-import javax.ws.rs.Consumes;
-import javax.ws.rs.GET;
-import javax.ws.rs.POST;
-import javax.ws.rs.PUT;
-import javax.ws.rs.Path;
-import javax.ws.rs.PathParam;
-import javax.ws.rs.Produces;
-import javax.ws.rs.QueryParam;
-import javax.ws.rs.core.Response;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.core.Response;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+
 import org.infinispan.commons.time.TimeService;
 
 /**
@@ -80,11 +83,6 @@ public interface TestingResource {
     void clearAdminEventQueue();
 
     @GET
-    @Path("/clear-event-store")
-    @Produces(MediaType.APPLICATION_JSON)
-    void clearEventStore();
-
-    @GET
     @Path("/clear-event-store-for-realm")
     @Produces(MediaType.APPLICATION_JSON)
     void clearEventStore(@QueryParam("realmId") String realmId);
@@ -123,11 +121,6 @@ public interface TestingResource {
     @Path("/on-event")
     @Consumes(MediaType.APPLICATION_JSON)
     public void onEvent(final EventRepresentation rep);
-
-    @GET
-    @Path("/clear-admin-event-store")
-    @Produces(MediaType.APPLICATION_JSON)
-    void clearAdminEventStore();
 
     @GET
     @Path("/clear-admin-event-store-for-realm")
@@ -332,15 +325,22 @@ public interface TestingResource {
     @Produces(MediaType.TEXT_HTML_UTF_8)
     String getJavascriptTestingEnvironment();
 
+    @GET
+    @Path("/list-disabled-features")
+    @Produces(MediaType.APPLICATION_JSON)
+    Set<Profile.Feature> listDisabledFeatures();
+
     @POST
     @Path("/enable-feature/{feature}")
     @Consumes(MediaType.APPLICATION_JSON)
-    Response enableFeature(@PathParam("feature") String feature);
+    @Produces(MediaType.APPLICATION_JSON)
+    Set<Profile.Feature> enableFeature(@PathParam("feature") String feature);
 
     @POST
     @Path("/disable-feature/{feature}")
     @Consumes(MediaType.APPLICATION_JSON)
-    Response disableFeature(@PathParam("feature") String feature);
+    @Produces(MediaType.APPLICATION_JSON)
+    Set<Profile.Feature> disableFeature(@PathParam("feature") String feature);
 
     /**
      * If property-value is null, the system property will be unset (removed) on the server
@@ -349,6 +349,23 @@ public interface TestingResource {
     @Path("/set-system-property")
     @Consumes(MediaType.TEXT_HTML_UTF_8)
     void setSystemPropertyOnServer(@QueryParam("property-name") String propertyName, @QueryParam("property-value") String propertyValue);
+
+    /**
+     * Re-initialize specified provider factory with system properties scope. This will allow to change providerConfig in runtime with {@link #setSystemPropertyOnServer}
+     *
+     * This works just for the provider factories, which can be re-initialized without any side-effects (EG. some functionality already dependent
+     * on the previously initialized properties, which cannot be easily changed in runtime)
+     *
+     * @param providerType fully qualified class name of provider (subclass of org.keycloak.provider.Provider)
+     * @param providerId provider Id
+     * @param systemPropertiesPrefix prefix to be used for system properties
+     */
+    @GET
+    @Path("/reinitialize-provider-factory-with-system-properties-scope")
+    @Consumes(MediaType.TEXT_HTML_UTF_8)
+    @NoCache
+    void reinitializeProviderFactoryWithSystemPropertiesScope(@QueryParam("provider-type") String providerType, @QueryParam("provider-id") String providerId,
+                                                              @QueryParam("system-properties-prefix") String systemPropertiesPrefix);
 
 
     /**
@@ -361,5 +378,41 @@ public interface TestingResource {
     @Produces(MediaType.TEXT_HTML_UTF_8)
     Response simulatePostRequest(@QueryParam("postRequestUrl") String postRequestUrl,
                                          @QueryParam("encodedFormParameters") String encodedFormParameters);
+
+    /**
+     * Display message to Error Page - for testing purposes
+     *
+     * @param message message
+     */
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("/display-error-message")
+    Response displayErrorMessage(@QueryParam("message") String message);
+
+    /**
+     * @param providerClass Full name of class such as for example "org.keycloak.authentication.Authenticator"
+     * @param providerId providerId referenced in particular provider factory. Can be null (in this case we're returning default provider for particular providerClass)
+     * @return fullname of provider implementation class
+     */
+    @GET
+    @Path("/get-provider-implementation-class")
+    @Produces(MediaType.APPLICATION_JSON)
+    String getProviderClassName(@QueryParam("providerClass") String providerClass, @QueryParam("providerId") String providerId);
+
+    /**
+     * Temporarily disables truststore SPI from the file. Useful for example to test some error scenarios, which require truststore SPI to be unset (or set incorrectly)
+     */
+    @GET
+    @Path("/disable-truststore-spi")
+    @NoCache
+    void disableTruststoreSpi();
+
+    /**
+     * Re-enable truststore SPI after it was temporarily disabled by {@link #disableTruststoreSpi()}
+     */
+    @GET
+    @Path("/reenable-truststore-spi")
+    @NoCache
+    void reenableTruststoreSpi();
 
 }

@@ -16,23 +16,53 @@
  */
 package org.keycloak.operator;
 
+import org.keycloak.operator.crds.v2alpha1.deployment.ValueOrSecret;
+
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 public final class Constants {
-    public static final String CRDS_GROUP = "keycloak.org";
+    public static final String CRDS_GROUP = "k8s.keycloak.org";
     public static final String CRDS_VERSION = "v2alpha1";
     public static final String SHORT_NAME = "kc";
     public static final String NAME = "keycloak";
     public static final String PLURAL_NAME = "keycloaks";
     public static final String MANAGED_BY_LABEL = "app.kubernetes.io/managed-by";
     public static final String MANAGED_BY_VALUE = "keycloak-operator";
+    public static final String COMPONENT_LABEL = "app.kubernetes.io/component";
+    public static final String KEYCLOAK_COMPONENT_LABEL = "keycloak.org/component";
 
-    public static final Map<String, String> DEFAULT_LABELS = Map.of(
+    public static final Map<String, String> DEFAULT_LABELS = Collections.unmodifiableMap(new TreeMap<>(Map.of(
             "app", NAME,
             MANAGED_BY_LABEL, MANAGED_BY_VALUE
+    )));
+
+    public static final String DEFAULT_LABELS_AS_STRING = DEFAULT_LABELS.entrySet().stream()
+            .map(e -> e.getKey() + "=" + e.getValue())
+            .collect(Collectors.joining(","));
+
+    public static final List<ValueOrSecret> DEFAULT_DIST_CONFIG_LIST = List.of(
+            new ValueOrSecret("health-enabled", "true"),
+            new ValueOrSecret("cache", "ispn"),
+            new ValueOrSecret("cache-stack", "kubernetes"),
+            new ValueOrSecret("proxy", "passthrough")
     );
 
-    public static final Map<String, String> DEFAULT_DIST_CONFIG = Map.of(
-        "KC_METRICS_ENABLED", "true"
-    );
+
+    public static final Integer KEYCLOAK_HTTP_PORT = 8080;
+    public static final Integer KEYCLOAK_HTTPS_PORT = 8443;
+    public static final String KEYCLOAK_SERVICE_PROTOCOL = "TCP";
+    public static final String KEYCLOAK_SERVICE_SUFFIX = "-service";
+    public static final Integer KEYCLOAK_DISCOVERY_SERVICE_PORT = 7800;
+    public static final String KEYCLOAK_DISCOVERY_SERVICE_SUFFIX = "-discovery";
+
+    public static final String KEYCLOAK_INGRESS_SUFFIX = "-ingress";
+
+    public static final String INSECURE_DISABLE = "INSECURE-DISABLE";
+    public static final String CERTIFICATES_FOLDER = "/mnt/certificates";
+
+    public static String KEYCLOAK_HTTP_RELATIVE_PATH_KEY = "http-relative-path";
 }

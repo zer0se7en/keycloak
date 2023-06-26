@@ -21,23 +21,15 @@ package org.keycloak.models;
 import java.util.Map;
 
 import org.keycloak.sessions.CommonClientSessionModel;
-import org.keycloak.storage.SearchableModelField;
 
 /**
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
  */
 public interface AuthenticatedClientSessionModel extends CommonClientSessionModel {
 
-    class SearchableFields {
-        public static final SearchableModelField<AuthenticatedClientSessionModel> ID      = new SearchableModelField<>("id", String.class);
-        public static final SearchableModelField<AuthenticatedClientSessionModel> REALM_ID = new SearchableModelField<>("realmId", String.class);
-        public static final SearchableModelField<AuthenticatedClientSessionModel> CLIENT_ID = new SearchableModelField<>("clientId", String.class);
-        public static final SearchableModelField<AuthenticatedClientSessionModel> USER_SESSION_ID = new SearchableModelField<>("userSessionId", String.class);
-        public static final SearchableModelField<AuthenticatedClientSessionModel> IS_OFFLINE = new SearchableModelField<>("isOffline", Boolean.class);
-        public static final SearchableModelField<AuthenticatedClientSessionModel> TIMESTAMP  = new SearchableModelField<>("timestamp", Integer.class);
-    }
-
-    String STARTED_AT_NOTE = "startedAt";
+    final String STARTED_AT_NOTE = "startedAt";
+    final String USER_SESSION_STARTED_AT_NOTE = "userSessionStartedAt";
+    final String USER_SESSION_REMEMBER_ME_NOTE = "userSessionRememberMe";
 
     String getId();
 
@@ -45,6 +37,15 @@ public interface AuthenticatedClientSessionModel extends CommonClientSessionMode
         String started = getNote(STARTED_AT_NOTE);
         // Fallback to 0 if "started" note is not available. This can happen for the offline sessions migrated from old version where "startedAt" note was not yet available
         return started == null ? 0 : Integer.parseInt(started);
+    }
+
+    default int getUserSessionStarted() {
+        String started = getNote(USER_SESSION_STARTED_AT_NOTE);
+        return started == null ? getUserSession().getStarted() : Integer.parseInt(started);
+    }
+
+    default boolean isUserSessionRememberMe() {
+        return Boolean.parseBoolean(getNote(USER_SESSION_REMEMBER_ME_NOTE));
     }
 
     int getTimestamp();

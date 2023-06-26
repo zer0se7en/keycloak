@@ -27,11 +27,6 @@ import org.keycloak.models.map.common.AbstractEntity;
 public interface JpaRootEntity extends AbstractEntity, Serializable {
 
     /**
-     * Version of the JPA entity used for optimistic locking
-     */
-    int getVersion();
-
-    /**
      * @return current supported version of the JPA entity used for schema versioning.
      */
     Integer getEntityVersion();
@@ -51,13 +46,17 @@ public interface JpaRootEntity extends AbstractEntity, Serializable {
      * calls this method whenever the root entity or one of its children changes.
      *
      * Future versions of this method might restrict downgrading to downgrade only from the next version.
+     * 
+     * @return <code>true</code> if the entityVersion was effectively changed, <code>false</code> otherwise.
      */
-    default void updateEntityVersion() {
+    default boolean updateEntityVersion() {
         Integer ev = getEntityVersion();
         Integer currentEv = getCurrentSchemaVersion();
         if (ev != null && !Objects.equals(ev, currentEv)) {
             setEntityVersion(currentEv);
+            return true;
         }
+        return false;
     }
 
     Integer getCurrentSchemaVersion();

@@ -56,7 +56,7 @@ public class IckleQueryOperators {
         OPERATOR_TO_EXPRESSION_COMBINATORS.put(ModelCriteriaBuilder.Operator.IN, IckleQueryOperators::in);
         OPERATOR_TO_EXPRESSION_COMBINATORS.put(ModelCriteriaBuilder.Operator.EXISTS, IckleQueryOperators::exists);
         OPERATOR_TO_EXPRESSION_COMBINATORS.put(ModelCriteriaBuilder.Operator.NOT_EXISTS, IckleQueryOperators::notExists);
-        OPERATOR_TO_EXPRESSION_COMBINATORS.put(ModelCriteriaBuilder.Operator.ILIKE, IckleQueryOperators::iLike);
+        OPERATOR_TO_EXPRESSION_COMBINATORS.put(ModelCriteriaBuilder.Operator.ILIKE, IckleQueryOperators::like);
         OPERATOR_TO_EXPRESSION_COMBINATORS.put(ModelCriteriaBuilder.Operator.LIKE, IckleQueryOperators::like);
 
         OPERATOR_TO_STRING.put(ModelCriteriaBuilder.Operator.EQ, "=");
@@ -94,14 +94,8 @@ public class IckleQueryOperators {
         return field + " IS NULL OR " + field + " IS EMPTY";
     }
 
-    private static String iLike(String modelFieldName, Object[] values, Map<String, Object> parameters) {
-        String sanitizedValue = (String) IckleQueryMapModelCriteriaBuilder.sanitize(values[0]);
-        return singleValueOperator(ModelCriteriaBuilder.Operator.ILIKE)
-                .combine(modelFieldName + "Lowercase", new String[] {sanitizedValue.toLowerCase()}, parameters);
-    }
-
     private static String like(String modelFieldName, Object[] values, Map<String, Object> parameters) {
-        String sanitizedValue = (String) IckleQueryMapModelCriteriaBuilder.sanitize(values[0]);
+        String sanitizedValue = (String) IckleQueryMapModelCriteriaBuilder.sanitizeNonAnalyzed(values[0]);
         return singleValueOperator(ModelCriteriaBuilder.Operator.LIKE)
                 .combine(modelFieldName, new String[] {sanitizedValue}, parameters);
     }

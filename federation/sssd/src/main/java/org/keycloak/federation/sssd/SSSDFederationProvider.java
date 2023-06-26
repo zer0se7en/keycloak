@@ -27,6 +27,8 @@ import org.keycloak.federation.sssd.impl.PAMAuthenticator;
 import org.keycloak.models.*;
 import org.keycloak.models.credential.PasswordCredentialModel;
 import org.keycloak.models.utils.KeycloakModelUtils;
+import org.keycloak.storage.ReadOnlyException;
+import org.keycloak.storage.UserStoragePrivateUtil;
 import org.keycloak.storage.UserStorageProvider;
 import org.keycloak.storage.UserStorageProviderModel;
 import org.keycloak.storage.user.ImportedUserValidation;
@@ -44,8 +46,8 @@ import java.util.stream.Stream;
  * @version $Revision: 1 $
  */
 public class SSSDFederationProvider implements UserStorageProvider,
-        UserLookupProvider.Streams,
-        CredentialInputUpdater.Streams,
+        UserLookupProvider,
+        CredentialInputUpdater,
         CredentialInputValidator,
         ImportedUserValidation {
 
@@ -85,7 +87,7 @@ public class SSSDFederationProvider implements UserStorageProvider,
          * @return user if found or successfully created. Null if user with same username already exists, but is not linked to this provider
          */
     protected UserModel findOrCreateAuthenticatedUser(RealmModel realm, String username) {
-        UserModel user = session.userLocalStorage().getUserByUsername(realm, username);
+        UserModel user = UserStoragePrivateUtil.userLocalStorage(session).getUserByUsername(realm, username);
         if (user != null) {
             logger.debug("SSSD authenticated user " + username + " found in Keycloak storage");
 
@@ -100,7 +102,7 @@ public class SSSDFederationProvider implements UserStorageProvider,
                     logger.warn("User with username " + username + " already exists and is linked to provider [" + model.getName() +
                             "] but principal is not correct.");
                     logger.warn("Will re-create user");
-                    new UserManager(session).removeUser(realm, user, session.userLocalStorage());
+                    new UserManager(session).removeUser(realm, user, UserStoragePrivateUtil.userLocalStorage(session));
                 }
             }
         }
@@ -110,10 +112,14 @@ public class SSSDFederationProvider implements UserStorageProvider,
     }
 
     protected UserModel importUserToKeycloak(RealmModel realm, String username) {
-        Sssd sssd = new Sssd(username);
+        Sssd sssd = new Sssd(username, factory.getDbusConnection());
         User sssdUser = sssd.getUser();
+        if (sssdUser == null) {
+            return null;
+        }
+
         logger.debugf("Creating SSSD user: %s to local Keycloak storage", username);
-        UserModel user = session.userLocalStorage().addUser(realm, username);
+        UserModel user = UserStoragePrivateUtil.userLocalStorage(session).addUser(realm, username);
         user.setEnabled(true);
         user.setEmail(sssdUser.getEmail());
         user.setFirstName(sssdUser.getFirstName());
@@ -157,8 +163,8 @@ public class SSSDFederationProvider implements UserStorageProvider,
     }
 
     public boolean isValid(RealmModel realm, UserModel local) {
-        User user = new Sssd(local.getUsername()).getUser();
-        return user.equals(local);
+        User user = new Sssd(local.getUsername(), factory.getDbusConnection()).getUser();
+        return user != null && user.equals(local);
     }
 
     @Override
@@ -190,12 +196,11 @@ public class SSSDFederationProvider implements UserStorageProvider,
 
     @Override
     public void close() {
-        Sssd.disconnect();
     }
 
     @Override
     public boolean updateCredential(RealmModel realm, UserModel user, CredentialInput input) {
-        throw new IllegalStateException("You can't update your password as your account is read only.");
+        throw new ReadOnlyException("You can't update your password as your account is read only.");
     }
 
     @Override

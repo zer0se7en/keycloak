@@ -19,7 +19,6 @@ package org.keycloak.services.resources.admin;
 import java.io.IOException;
 import java.text.MessageFormat;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Properties;
 import java.util.function.BiFunction;
 
@@ -48,10 +47,8 @@ public class AdminMessageFormatter implements BiFunction<String, Object[], Strin
         try {
             KeycloakContext context = session.getContext();
             locale = context.resolveLocale(user);
-            messages = new Properties();
-            messages.putAll(getTheme(session).getMessages(locale));
             RealmModel realm = context.getRealm();
-            messages.putAll(realm.getRealmLocalizationTextsByLocale(locale.toLanguageTag()));
+            messages = getTheme(session).getEnhancedMessages(realm, locale);
         } catch (IOException cause) {
             throw new RuntimeException("Failed to configure error messages", cause);
         }

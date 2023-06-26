@@ -18,9 +18,7 @@
 package org.keycloak.authentication.requiredactions;
 
 import org.keycloak.Config;
-import org.keycloak.OAuth2Constants;
 import org.keycloak.authentication.CredentialRegistrator;
-import org.keycloak.authentication.DisplayTypeRequiredActionFactory;
 import org.keycloak.authentication.InitiatedActionSupport;
 import org.keycloak.authentication.RequiredActionContext;
 import org.keycloak.authentication.RequiredActionFactory;
@@ -41,15 +39,15 @@ import org.keycloak.services.messages.Messages;
 import org.keycloak.services.validation.Validation;
 import org.keycloak.utils.CredentialHelper;
 
-import javax.ws.rs.core.MultivaluedMap;
-import javax.ws.rs.core.Response;
+import jakarta.ws.rs.core.MultivaluedMap;
+import jakarta.ws.rs.core.Response;
 import java.util.stream.Stream;
 
 /**
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
  * @version $Revision: 1 $
  */
-public class UpdateTotp implements RequiredActionProvider, RequiredActionFactory, DisplayTypeRequiredActionFactory, CredentialRegistrator {
+public class UpdateTotp implements RequiredActionProvider, RequiredActionFactory, CredentialRegistrator {
     @Override
     public InitiatedActionSupport initiatedActionSupport() {
         return InitiatedActionSupport.SUPPORTED;
@@ -96,7 +94,7 @@ public class UpdateTotp implements RequiredActionProvider, RequiredActionFactory
         }
         OTPCredentialProvider otpCredentialProvider = (OTPCredentialProvider) context.getSession().getProvider(CredentialProvider.class, "keycloak-otp");
         final Stream<CredentialModel> otpCredentials  = (otpCredentialProvider.isConfiguredFor(context.getRealm(), context.getUser()))
-            ? context.getSession().userCredentialManager().getStoredCredentialsByTypeStream(context.getRealm(), context.getUser(), OTPCredentialModel.TYPE)
+            ? context.getUser().credentialManager().getStoredCredentialsByTypeStream(OTPCredentialModel.TYPE)
             : Stream.empty();
         if (otpCredentials.count() >= 1 && Validation.isBlank(userLabel)) {
             Response challenge = context.form()
@@ -134,15 +132,6 @@ public class UpdateTotp implements RequiredActionProvider, RequiredActionFactory
     public RequiredActionProvider create(KeycloakSession session) {
         return this;
     }
-
-
-    @Override
-    public RequiredActionProvider createDisplay(KeycloakSession session, String displayType) {
-        if (displayType == null) return this;
-        if (!OAuth2Constants.DISPLAY_CONSOLE.equalsIgnoreCase(displayType)) return null;
-        return ConsoleUpdateTotp.SINGLETON;
-    }
-
 
     @Override
     public void init(Config.Scope config) {

@@ -20,6 +20,7 @@ import org.jboss.logging.Logger;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.common.util.Time;
 import org.keycloak.models.ClientModel;
+import org.keycloak.models.ClientSecretConstants;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.ProtocolMapperModel;
 import org.keycloak.models.utils.ModelToRepresentation;
@@ -38,16 +39,16 @@ import org.keycloak.services.clientregistration.AbstractClientRegistrationProvid
 import org.keycloak.services.clientregistration.ClientRegistrationException;
 import org.keycloak.services.clientregistration.ErrorCodes;
 
-import javax.ws.rs.Consumes;
-import javax.ws.rs.DELETE;
-import javax.ws.rs.GET;
-import javax.ws.rs.POST;
-import javax.ws.rs.PUT;
-import javax.ws.rs.Path;
-import javax.ws.rs.PathParam;
-import javax.ws.rs.Produces;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import java.net.URI;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -129,6 +130,10 @@ public class OIDCClientRegistrationProvider extends AbstractClientRegistrationPr
             updatePairwiseSubMappers(clientModel, SubjectType.parse(clientOIDC.getSubjectType()), clientOIDC.getSectorIdentifierUri());
             updateClientRepWithProtocolMappers(clientModel, client);
 
+            client.setSecret(clientModel.getSecret());
+            client.getAttributes().put(ClientSecretConstants.CLIENT_SECRET_EXPIRATION,clientModel.getAttribute(ClientSecretConstants.CLIENT_SECRET_EXPIRATION));
+            client.getAttributes().put(ClientSecretConstants.CLIENT_SECRET_CREATION_TIME,clientModel.getAttribute(ClientSecretConstants.CLIENT_SECRET_CREATION_TIME));
+
             validateClient(clientModel, clientOIDC, false);
 
             URI uri = session.getContext().getUri().getAbsolutePathBuilder().path(client.getClientId()).build();
@@ -159,7 +164,7 @@ public class OIDCClientRegistrationProvider extends AbstractClientRegistrationPr
                 } else {
                     return false;
                 }
-            }).forEach((ProtocolMapperModel mapping) -> {
+            }).collect(Collectors.toList()).forEach((ProtocolMapperModel mapping) -> {
                 PairwiseSubMapperHelper.setSectorIdentifierUri(mapping, sectorIdentifierUri);
                 clientModel.updateProtocolMapper(mapping);
             });

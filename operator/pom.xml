@@ -7,7 +7,8 @@
     <parent>
         <artifactId>keycloak-parent</artifactId>
         <groupId>org.keycloak</groupId>
-        <version>18.0.0-SNAPSHOT</version>
+        <version>999.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
     </parent>
     
     <name>Keycloak Operator</name>
@@ -20,10 +21,8 @@
             See https://github.com/quarkusio/quarkus/blob/<versionTag>/bom/application/pom.xml
             for reference
         -->
-        <resteasy.version>4.7.4.Final</resteasy.version>
         <wildfly.common.version>1.5.4.Final-format-001</wildfly.common.version>
-        <jackson.version>2.13.1</jackson.version>
-        <kubernetes-client.version>5.12.0</kubernetes-client.version>
+        <kubernetes-client.version>6.6.2</kubernetes-client.version>
 
         <compiler-plugin.version>3.8.1</compiler-plugin.version>
         <maven.compiler.parameters>true</maven.compiler.parameters>
@@ -32,23 +31,20 @@
         <maven.compiler.target>11</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-        <quarkus.operator.sdk.version>3.0.2</quarkus.operator.sdk.version>
-        <quarkus.version>2.6.1.Final</quarkus.version>
+        <quarkus.operator.sdk.version>6.1.1</quarkus.operator.sdk.version>
+        <quarkus.operator.build.version>3.1.1.Final</quarkus.operator.build.version>
         <quarkus.container-image.group>keycloak</quarkus.container-image.group>
-        <quarkus.jib.base-jvm-image>eclipse-temurin:11</quarkus.jib.base-jvm-image>
-        <quarkus.kubernetes.image-pull-policy>Never</quarkus.kubernetes.image-pull-policy>
-        <maven-failsafe-plugin.version>2.22.0</maven-failsafe-plugin.version>
     </properties>
     
     <dependencyManagement>
         <dependencies>
-        <dependency>
-            <groupId>io.quarkiverse.operatorsdk</groupId>
-            <artifactId>quarkus-operator-sdk-bom</artifactId>
-            <version>${quarkus.operator.sdk.version}</version>
-            <type>pom</type>
-            <scope>import</scope>
-        </dependency>
+            <dependency>
+                <groupId>io.quarkiverse.operatorsdk</groupId>
+                <artifactId>quarkus-operator-sdk-bom</artifactId>
+                <version>${quarkus.operator.sdk.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -73,7 +69,7 @@
         </dependency>
         <dependency>
             <groupId>io.quarkiverse.operatorsdk</groupId>
-            <artifactId>quarkus-operator-sdk-csv-generator</artifactId>
+            <artifactId>quarkus-operator-sdk-bundle-generator</artifactId>
         </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
@@ -99,19 +95,25 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-kubernetes-client</artifactId>
         </dependency>
-
-
-        <!--  This dependency is needed only to ensure proper building order so that this module is build after the CSV extension -->
         <dependency>
-            <groupId>io.quarkiverse.operatorsdk</groupId>
-            <artifactId>quarkus-operator-sdk-csv-generator-deployment</artifactId>
-            <scope>provided</scope>
+          <groupId>io.quarkus</groupId>
+          <artifactId>quarkus-container-image-docker</artifactId>
         </dependency>
 
         <!-- Keycloak -->
         <dependency>
             <groupId>org.keycloak</groupId>
-            <artifactId>keycloak-common</artifactId>
+            <artifactId>keycloak-core</artifactId>
+        </dependency>
+
+        <!-- FIXME: Adding BC for now as removing the Bouncycastle dependencies from the operator makes it unusable on K3s and possibly on other kubernetes distributions (e.g. Rancher is based on K3s). -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk15on</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk15on</artifactId>
         </dependency>
 
         <!-- Test -->
@@ -137,6 +139,11 @@
             <version>${awaitility.version}</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>io.rest-assured</groupId>
+            <artifactId>rest-assured</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -145,7 +152,7 @@
             <plugin>
                 <groupId>io.quarkus</groupId>
                 <artifactId>quarkus-maven-plugin</artifactId>
-                <version>${quarkus.version}</version>
+                <version>${quarkus.operator.build.version}</version>
             </plugin>
             <plugin>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -157,7 +164,7 @@
             <plugin>
                 <groupId>io.quarkus</groupId>
                 <artifactId>quarkus-maven-plugin</artifactId>
-                <version>${quarkus.version}</version>
+                <version>${quarkus.operator.build.version}</version>
                 <executions>
                     <execution>
                     <goals>
@@ -186,18 +193,20 @@
                         </configuration>
                     </execution>
                     <execution>
-                        <id>import-keycloak-core</id>
+                        <id>copy-ubi-null</id>
                         <phase>validate</phase>
                         <goals>
                             <goal>copy-resources</goal>
                         </goals>
                         <configuration>
-                            <outputDirectory>${basedir}/target/keycloak-core</outputDirectory>
+                            <outputDirectory>${project.build.directory}</outputDirectory>
                             <resources>
-                            <resource>
-                                <directory>${basedir}/../core/src/main/java</directory>
-                                <filtering>true</filtering>
-                            </resource>
+                                <resource>
+                                    <directory>${basedir}/../quarkus/container/</directory>
+                                    <includes>
+                                        <include>**/ubi-null.sh</include>
+                                    </includes>
+                                </resource>
                             </resources>
                         </configuration>
                     </execution>
@@ -216,7 +225,7 @@
                         </goals>
                         <configuration>
                             <sources>
-                                <source>${basedir}/target/keycloak-core</source>
+                                <source>${basedir}/target/generated-sources/java</source>
                             </sources>
                         </configuration>
                     </execution>
@@ -224,31 +233,80 @@
             </plugin>
 
             <plugin>
-                <artifactId>exec-maven-plugin</artifactId>
-                <groupId>org.codehaus.mojo</groupId>
-                <version>1.6.0</version>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <executions>
+                <!--
+                    need to run at "verify" to support testing with images (which are built at "package")
+                    using surefire instead of failsafe to align with rest of the KC project
+                -->
+                    <execution>
+                        <id>default-test</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>test</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <systemPropertyVariables>
+                        <!-- Used in KeycloakDeploymentTest#testPreconfiguredPodLabels -->
+                        <OPERATOR_TEST_LABEL_EXPRESSION>my-value</OPERATOR_TEST_LABEL_EXPRESSION>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+            
+            <plugin>
+                <artifactId>maven-antrun-plugin</artifactId>
                 <executions>
                     <execution>
-                        <id>patch-core-sources</id>
-                        <phase>generate-sources</phase>
-                        <goals>
-                            <goal>exec</goal>
-                        </goals>
+                        <id>filterEnum</id>
+                        <phase>package</phase>
                         <configuration>
-                            <executable>${basedir}/patch-sources.sh</executable>
+                            <target>
+                                <replaceregexp file="${project.build.directory}/kubernetes/keycloakrealmimports.k8s.keycloak.org-v1.yml"
+                                   match="[^\n]*- ENUM\$VALUES\s*\n"
+                                   flags="g"
+                                   replace=""/>
+                            </target>
                         </configuration>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
                     </execution>
                 </executions>
             </plugin>
+
             <plugin>
-                <artifactId>maven-failsafe-plugin</artifactId>
-                <version>${maven-failsafe-plugin.version}</version>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
                 <executions>
                     <execution>
+                        <id>assemble-quarkus</id>
+                        <phase>package</phase>
                         <goals>
-                            <goal>integration-test</goal>
-                            <goal>verify</goal>
+                            <goal>single</goal>
                         </goals>
+                        <configuration>
+                            <descriptors>
+                                <descriptor>assembly.xml</descriptor>
+                            </descriptors>
+                            <appendAssemblyId>false</appendAssemblyId>
+                            <workDirectory>${project.build.directory}/assembly/work</workDirectory>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>assemble-bundle</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <descriptors>
+                                <descriptor>olm-assembly.xml</descriptor>
+                            </descriptors>
+                            <appendAssemblyId>true</appendAssemblyId>
+                            <workDirectory>${project.build.directory}/bundle-assembly/work</workDirectory>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>
@@ -258,9 +316,9 @@
     
     <profiles>
         <profile>
-            <id>native</id>
+            <id>operator-prod</id>
             <properties>
-            <quarkus.package.type>native</quarkus.package.type>
+                <quarkus.profile>rhbk</quarkus.profile>
             </properties>
         </profile>
     </profiles>

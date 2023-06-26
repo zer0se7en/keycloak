@@ -27,10 +27,8 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.message.BasicNameValuePair;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.junit.Assert;
 import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.keycloak.OAuth2Constants;
@@ -43,8 +41,10 @@ import org.keycloak.common.enums.SslRequired;
 import org.keycloak.common.util.Base64Url;
 import org.keycloak.crypto.Algorithm;
 import org.keycloak.crypto.ECDSASignatureProvider;
+import org.keycloak.crypto.KeyUse;
 import org.keycloak.events.Details;
 import org.keycloak.events.Errors;
+import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jws.JWSHeader;
 import org.keycloak.jose.jws.JWSInput;
 import org.keycloak.jose.jws.JWSInputException;
@@ -80,44 +80,43 @@ import org.keycloak.testsuite.util.UserBuilder;
 import org.keycloak.testsuite.util.UserInfoClientUtil;
 import org.keycloak.testsuite.util.UserManager;
 import org.keycloak.util.BasicAuthHelper;
+import org.keycloak.util.JsonSerialization;
+import org.keycloak.util.TokenUtil;
+import org.openqa.selenium.By;
 
-import javax.ws.rs.client.Client;
-import javax.ws.rs.client.Entity;
-import javax.ws.rs.client.WebTarget;
-import javax.ws.rs.core.Form;
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriBuilder;
+import jakarta.ws.rs.client.Client;
+import jakarta.ws.rs.client.Entity;
+import jakarta.ws.rs.client.WebTarget;
+import jakarta.ws.rs.core.Form;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriBuilder;
 import java.io.IOException;
 import java.net.URI;
-import java.security.Security;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
-import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.hamcrest.Matchers.hasItemInArray;
-import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.keycloak.testsuite.Assert.assertExpiration;
 import static org.keycloak.testsuite.admin.AbstractAdminTest.loadJson;
 import static org.keycloak.testsuite.admin.ApiUtil.findClientByClientId;
 import static org.keycloak.testsuite.admin.ApiUtil.findUserByUsername;
 import static org.keycloak.testsuite.admin.ApiUtil.findUserByUsernameId;
-import static org.keycloak.testsuite.util.ServerURLs.AUTH_SERVER_SSL_REQUIRED;
 import static org.keycloak.testsuite.util.OAuthClient.AUTH_SERVER_ROOT;
 import static org.keycloak.testsuite.util.ProtocolMapperUtil.createRoleNameMapper;
-import static org.keycloak.testsuite.Assert.assertExpiration;
-
-import org.keycloak.util.JsonSerialization;
-import org.keycloak.util.TokenUtil;
-import org.openqa.selenium.By;
+import static org.keycloak.testsuite.util.ServerURLs.AUTH_SERVER_SSL_REQUIRED;
 
 /**
  * @author <a href="mailto:sthorger@redhat.com">Stian Thorgersen</a>
@@ -131,11 +130,6 @@ public class AccessTokenTest extends AbstractKeycloakTest {
     @Override
     public void beforeAbstractKeycloakTest() throws Exception {
         super.beforeAbstractKeycloakTest();
-    }
-
-    @BeforeClass
-    public static void addBouncyCastleProvider() {
-        if (Security.getProvider("BC") == null) Security.addProvider(new BouncyCastleProvider());
     }
 
     @Before
@@ -202,7 +196,10 @@ public class AccessTokenTest extends AbstractKeycloakTest {
 
         assertEquals("Bearer", response.getTokenType());
 
-        String expectedKid = oauth.doCertsRequest("test").getKeys()[0].getKeyId();
+        String expectedKid = Stream.of(oauth.doCertsRequest("test").getKeys())
+                .filter(jwk -> KeyUse.SIG.getSpecName().equals(jwk.getPublicKeyUse()))
+                .map(JWK::getKeyId)
+                .findFirst().orElseThrow(() -> new AssertionError("Was not able to find key with usage SIG in the 'test' realm keys"));
 
         JWSHeader header = new JWSInput(response.getAccessToken()).getHeader();
         assertEquals("RS256", header.getAlgorithm().name());
@@ -224,7 +221,8 @@ public class AccessTokenTest extends AbstractKeycloakTest {
         AccessToken token = oauth.verifyToken(response.getAccessToken());
 
         assertEquals(findUserByUsername(adminClient.realm("test"), "test-user@localhost").getId(), token.getSubject());
-        assertNotEquals("test-user@localhost", token.getSubject());
+        // The following check is not valid anymore since file store does have the same ID, and is redundant due to the previous line
+        // assertNotEquals("test-user@localhost", token.getSubject());
 
         assertEquals(sessionId, token.getSessionState());
 
@@ -387,6 +385,7 @@ public class AccessTokenTest extends AbstractKeycloakTest {
 
     @Test
     public void accessTokenCodeExpired() {
+        getTestingClient().testing().setTestingInfinispanTimeService();
         RealmManager.realm(adminClient.realm("test")).accessCodeLifeSpan(1);
         oauth.doLogin("test-user@localhost", "password");
 
@@ -397,15 +396,18 @@ public class AccessTokenTest extends AbstractKeycloakTest {
 
         String code = oauth.getCurrentQuery().get(OAuth2Constants.CODE);
 
-        setTimeOffset(2);
+        try {
+            setTimeOffset(2);
 
-        OAuthClient.AccessTokenResponse response = oauth.doAccessTokenRequest(code, "password");
-        Assert.assertEquals(400, response.getStatusCode());
-
-        setTimeOffset(0);
+            OAuthClient.AccessTokenResponse response = oauth.doAccessTokenRequest(code, "password");
+            Assert.assertEquals(400, response.getStatusCode());
+        } finally {
+            getTestingClient().testing().revertTestingInfinispanTimeService();
+            resetTimeOffset();
+        }
 
         AssertEvents.ExpectedEvent expectedEvent = events.expectCodeToToken(codeId, codeId);
-        expectedEvent.error("expired_code")
+        expectedEvent.error("invalid_code")
                 .removeDetail(Details.TOKEN_ID)
                 .removeDetail(Details.REFRESH_TOKEN_ID)
                 .removeDetail(Details.REFRESH_TOKEN_TYPE)
@@ -661,7 +663,7 @@ public class AccessTokenTest extends AbstractKeycloakTest {
 
 
             Response response = executeGrantAccessTokenRequest(grantTarget);
-            assertEquals(400, response.getStatus());
+            assertEquals(401, response.getStatus());
             response.close();
 
             {
@@ -1339,7 +1341,7 @@ public class AccessTokenTest extends AbstractKeycloakTest {
         String encodedSignature = token.split("\\.",3)[2];
         byte[] signature = Base64Url.decode(encodedSignature);
         Assert.assertEquals(expectedLength, signature.length);
-        oauth.openLogout();
+        oauth.idTokenHint(response.getIdToken()).openLogout();
     }
 
     private void conductAccessTokenRequest(String expectedRefreshAlg, String expectedAccessAlg, String expectedIdTokenAlg) throws Exception {
@@ -1388,7 +1390,8 @@ public class AccessTokenTest extends AbstractKeycloakTest {
         AccessToken token = oauth.verifyToken(response.getAccessToken());
 
         assertEquals(findUserByUsername(adminClient.realm("test"), "test-user@localhost").getId(), token.getSubject());
-        assertNotEquals("test-user@localhost", token.getSubject());
+        // The following check is not valid anymore since file store does have the same ID, and is redundant due to the previous line
+        // assertNotEquals("test-user@localhost", token.getSubject());
 
         assertEquals(sessionId, token.getSessionState());
 

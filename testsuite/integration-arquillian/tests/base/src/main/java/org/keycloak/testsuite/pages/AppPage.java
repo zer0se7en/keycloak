@@ -22,7 +22,7 @@ import org.keycloak.protocol.oidc.OIDCLoginProtocolService;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.FindBy;
 
-import javax.ws.rs.core.UriBuilder;
+import jakarta.ws.rs.core.UriBuilder;
 
 import static org.keycloak.testsuite.util.UIUtils.clickLink;
 import static org.keycloak.testsuite.util.ServerURLs.removeDefaultPorts;
@@ -57,10 +57,10 @@ public class AppPage extends AbstractPage {
         AUTH_RESPONSE, LOGOUT_REQUEST, APP_REQUEST
     }
 
-    public void logout() {
-        String logoutUri = OIDCLoginProtocolService.logoutUrl(UriBuilder.fromUri(oauth.AUTH_SERVER_ROOT))
-                .queryParam(OAuth2Constants.REDIRECT_URI, oauth.APP_AUTH_ROOT).build("test").toString();
-        driver.navigate().to(logoutUri);
+    public void logout(String idTokenHint) {
+        oauth.idTokenHint(idTokenHint).openLogout();
     }
+
+
 
 }

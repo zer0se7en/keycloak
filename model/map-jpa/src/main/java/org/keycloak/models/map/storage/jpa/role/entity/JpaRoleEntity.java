@@ -25,23 +25,22 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.persistence.Basic;
-import javax.persistence.CascadeType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.FetchType;
-import javax.persistence.Id;
-import javax.persistence.OneToMany;
-import javax.persistence.Table;
-import javax.persistence.UniqueConstraint;
-import javax.persistence.Version;
+import jakarta.persistence.Basic;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import org.hibernate.annotations.Type;
-import org.hibernate.annotations.TypeDef;
-import org.hibernate.annotations.TypeDefs;
 import org.keycloak.models.map.common.DeepCloner;
+import org.keycloak.models.map.common.UuidValidator;
 import org.keycloak.models.map.role.MapRoleEntity.AbstractRoleEntity;
 import static org.keycloak.models.map.storage.jpa.Constants.CURRENT_SCHEMA_VERSION_ROLE;
-import org.keycloak.models.map.storage.jpa.JpaRootEntity;
+import org.keycloak.models.map.storage.jpa.JpaRootVersionedEntity;
 import org.keycloak.models.map.storage.jpa.hibernate.jsonb.JsonbType;
 
 /**
@@ -51,8 +50,7 @@ import org.keycloak.models.map.storage.jpa.hibernate.jsonb.JsonbType;
  */
 @Entity
 @Table(name = "kc_role", uniqueConstraints = {@UniqueConstraint(columnNames = {"realmId", "clientId", "name"})})
-@TypeDefs({@TypeDef(name = "jsonb", typeClass = JsonbType.class)})
-public class JpaRoleEntity extends AbstractRoleEntity implements JpaRootEntity {
+public class JpaRoleEntity extends AbstractRoleEntity implements JpaRootVersionedEntity {
 
     @Id
     @Column
@@ -63,7 +61,7 @@ public class JpaRoleEntity extends AbstractRoleEntity implements JpaRootEntity {
     @Column
     private int version;
 
-    @Type(type = "jsonb")
+    @Type(JsonbType.class)
     @Column(columnDefinition = "jsonb")
     private final JpaRoleMetadata metadata;
 
@@ -148,7 +146,8 @@ public class JpaRoleEntity extends AbstractRoleEntity implements JpaRootEntity {
 
     @Override
     public void setId(String id) {
-        this.id = id == null ? null : UUID.fromString(id);
+        String validatedId = UuidValidator.validateAndConvert(id);
+        this.id = UUID.fromString(validatedId);
     }
 
     @Override
@@ -176,11 +175,6 @@ public class JpaRoleEntity extends AbstractRoleEntity implements JpaRootEntity {
     }
 
     @Override
-    public void setClientRole(Boolean clientRole) {
-        // intentionally do nothing, assuming the role is client-role when this.getClientId() != null;
-    }
-
-    @Override
     public void setRealmId(String realmId) {
         metadata.setRealmId(realmId);
     }
@@ -202,22 +196,28 @@ public class JpaRoleEntity extends AbstractRoleEntity implements JpaRootEntity {
 
     @Override
     public Set<String> getCompositeRoles() {
-        return metadata.getCompositeRoles();
+        throw new UnsupportedOperationException("this is implemented in JpaMapRoleEntityDelegate, should never be called");
     }
 
     @Override
     public void setCompositeRoles(Set<String> compositeRoles) {
-        metadata.setCompositeRoles(compositeRoles);
+        if (compositeRoles == null) {
+            // this is called when cloning an entity during creation, can't be avoided with the current implementation
+            return;
+        }
+        throw new UnsupportedOperationException("this is implemented in JpaMapRoleEntityDelegate, should never be called");
+
     }
 
     @Override
     public void addCompositeRole(String roleId) {
-        metadata.addCompositeRole(roleId);
+        throw new UnsupportedOperationException("this is implemented in JpaMapRoleEntityDelegate, should never be called");
+
     }
 
     @Override
     public void removeCompositeRole(String roleId) {
-        metadata.removeCompositeRole(roleId);
+        throw new UnsupportedOperationException("this is implemented in JpaMapRoleEntityDelegate, should never be called");
     }
 
     @Override

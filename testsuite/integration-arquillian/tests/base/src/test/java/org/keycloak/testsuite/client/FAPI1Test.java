@@ -32,7 +32,6 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.OAuthErrorException;
-import org.keycloak.adapters.authentication.JWTClientSecretCredentialsProvider;
 import org.keycloak.admin.client.resource.ClientResource;
 import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.authentication.authenticators.client.ClientIdAndSecretAuthenticator;
@@ -50,6 +49,7 @@ import org.keycloak.models.Constants;
 import org.keycloak.protocol.oidc.OIDCAdvancedConfigWrapper;
 import org.keycloak.protocol.oidc.OIDCConfigAttributes;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
+import org.keycloak.protocol.oidc.client.authentication.JWTClientSecretCredentialsProvider;
 import org.keycloak.protocol.oidc.utils.OIDCResponseType;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.IDToken;
@@ -63,7 +63,6 @@ import org.keycloak.services.clientpolicy.condition.AnyClientConditionFactory;
 import org.keycloak.services.clientpolicy.condition.ClientUpdaterContextConditionFactory;
 import org.keycloak.testsuite.Assert;
 import org.keycloak.testsuite.admin.ApiUtil;
-import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude;
 import org.keycloak.testsuite.client.resources.TestApplicationResourceUrls;
 import org.keycloak.testsuite.client.resources.TestOIDCEndpointsApplicationResource;
 import org.keycloak.testsuite.pages.AppPage;
@@ -74,6 +73,7 @@ import org.keycloak.testsuite.rest.resource.TestingOIDCEndpointsApplicationResou
 import org.keycloak.testsuite.util.MutualTLSUtils;
 import org.keycloak.testsuite.util.OAuthClient;
 import org.keycloak.testsuite.util.ServerURLs;
+import org.keycloak.testsuite.client.policies.AbstractClientPoliciesTest;
 
 import java.security.KeyPair;
 import java.security.PrivateKey;
@@ -104,7 +104,6 @@ import static org.keycloak.testsuite.util.ClientPoliciesUtil.createClientUpdateC
  *
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
  */
-@AuthServerContainerExclude(AuthServerContainerExclude.AuthServer.REMOTE)
 public class FAPI1Test extends AbstractClientPoliciesTest {
 
     @Page
@@ -317,7 +316,7 @@ public class FAPI1Test extends AbstractClientPoliciesTest {
         // Register client (default authenticator)
         String clientUUID = createClientByAdmin("foo", (ClientRepresentation clientRep) -> {
             clientRep.setClientAuthenticatorType(JWTClientSecretAuthenticator.PROVIDER_ID);
-            clientRep.setSecret("secret");
+            clientRep.setSecret("atleast-14chars-password");
         });
         ClientRepresentation client = getClientByAdmin(clientUUID);
         Assert.assertFalse(client.isPublicClient());
@@ -337,7 +336,7 @@ public class FAPI1Test extends AbstractClientPoliciesTest {
 
         // Check PKCE with S256, redirectUri and nonce/state set. Login should be successful
         successfulLoginAndLogout("foo", false, (String code) -> {
-            String signedJwt = getClientSecretSignedJWT("secret", Algorithm.HS256);
+            String signedJwt = getClientSecretSignedJWT("atleast-14chars-password", Algorithm.HS256);
             return doAccessTokenRequestWithClientSignedJWT(code, signedJwt, codeVerifier, DefaultHttpClient::new);
         });
     }
@@ -434,7 +433,7 @@ public class FAPI1Test extends AbstractClientPoliciesTest {
         OIDCAdvancedConfigWrapper clientConfig = OIDCAdvancedConfigWrapper.fromClientRepresentation(client);
         Assert.assertTrue(clientConfig.isUseMtlsHokToken());
         Assert.assertEquals(Algorithm.PS256, clientConfig.getIdTokenSignedResponseAlg());
-        Assert.assertEquals(Algorithm.PS256, clientConfig.getRequestObjectSignatureAlg().toString());
+        Assert.assertEquals(Algorithm.PS256, clientConfig.getRequestObjectSignatureAlg());
         Assert.assertFalse(client.isFullScopeAllowed());
     }
 
@@ -497,7 +496,7 @@ public class FAPI1Test extends AbstractClientPoliciesTest {
         ClientRepresentation client = getClientByAdmin(clientUUID);
         OIDCAdvancedConfigWrapper clientConfig = OIDCAdvancedConfigWrapper.fromClientRepresentation(client);
         Assert.assertEquals(Algorithm.ES256, clientConfig.getIdTokenSignedResponseAlg());
-        Assert.assertEquals(Algorithm.PS256, clientConfig.getRequestObjectSignatureAlg().toString());
+        Assert.assertEquals(Algorithm.PS256, clientConfig.getRequestObjectSignatureAlg());
 
         // Test default algorithms set everywhere
         clientUUID = createClientByAdmin("client-jwt-default-alg", (ClientRepresentation clientRep) -> {
@@ -507,7 +506,7 @@ public class FAPI1Test extends AbstractClientPoliciesTest {
         clientConfig = OIDCAdvancedConfigWrapper.fromClientRepresentation(client);
         Assert.assertEquals(Algorithm.PS256, clientConfig.getIdTokenSignedResponseAlg());
         Assert.assertEquals(Algorithm.PS256, clientConfig.getRequestObjectSignatureAlg().toString());
-        Assert.assertEquals(Algorithm.PS256, clientConfig.getUserInfoSignedResponseAlg().toString());
+        Assert.assertEquals(Algorithm.PS256, clientConfig.getUserInfoSignedResponseAlg());
         Assert.assertEquals(Algorithm.PS256, clientConfig.getTokenEndpointAuthSigningAlg());
         Assert.assertEquals(Algorithm.PS256, client.getAttributes().get(OIDCConfigAttributes.ACCESS_TOKEN_SIGNED_RESPONSE_ALG));
 
@@ -541,14 +540,14 @@ public class FAPI1Test extends AbstractClientPoliciesTest {
         // Create request without 'nbf' . Should fail in FAPI1 advanced client policy
         TestingOIDCEndpointsApplicationResource.AuthorizationEndpointRequestObject requestObject = createValidRequestObjectForSecureRequestObjectExecutor("foo");
         requestObject.nbf(null);
-        registerRequestObject(requestObject, "foo", org.keycloak.jose.jws.Algorithm.PS256, true);
+        registerRequestObject(requestObject, "foo", Algorithm.PS256, true);
         oauth.openLoginForm();
         assertRedirectedToClientWithError(OAuthErrorException.INVALID_REQUEST_URI,false, "Missing parameter in the 'request' object: nbf");
 
         // Create valid request object - more extensive testing of 'request' object is in ClientPoliciesTest.testSecureRequestObjectExecutor()
         requestObject = createValidRequestObjectForSecureRequestObjectExecutor("foo");
         requestObject.setNonce("123456"); // Nonce from method "checkNonceAndStateForCurrentClientDuringLogin()"
-        registerRequestObject(requestObject, "foo", org.keycloak.jose.jws.Algorithm.PS256, true);
+        registerRequestObject(requestObject, "foo", Algorithm.PS256, true);
 
         // Check response type
         oauth.openLoginForm();
@@ -557,14 +556,14 @@ public class FAPI1Test extends AbstractClientPoliciesTest {
         // Add the response_Type including token. Should fail
         oauth.responseType(OIDCResponseType.CODE + " " + OIDCResponseType.ID_TOKEN + " " + OIDCResponseType.TOKEN);
         requestObject.setResponseType(OIDCResponseType.CODE + " " + OIDCResponseType.ID_TOKEN + " " + OIDCResponseType.TOKEN);
-        registerRequestObject(requestObject, "foo", org.keycloak.jose.jws.Algorithm.PS256, true);
+        registerRequestObject(requestObject, "foo", Algorithm.PS256, true);
         oauth.openLoginForm();
         assertRedirectedToClientWithError(OAuthErrorException.INVALID_REQUEST,true, "invalid response_type");
 
         // Set correct response_type for FAPI 1 Advanced
         oauth.responseType(OIDCResponseType.CODE + " " + OIDCResponseType.ID_TOKEN);
         requestObject.setResponseType(OIDCResponseType.CODE + " " + OIDCResponseType.ID_TOKEN);
-        registerRequestObject(requestObject, "foo", org.keycloak.jose.jws.Algorithm.PS256, true);
+        registerRequestObject(requestObject, "foo", Algorithm.PS256, true);
         oauth.openLoginForm();
         loginPage.assertCurrent();
 
@@ -618,6 +617,7 @@ public class FAPI1Test extends AbstractClientPoliciesTest {
             OIDCAdvancedConfigWrapper clientConfig = OIDCAdvancedConfigWrapper.fromClientRepresentation(clientRep);
             clientConfig.setRequestUris(Collections.singletonList(TestApplicationResourceUrls.clientRequestUri()));
             clientConfig.setTlsClientAuthSubjectDn("EMAILADDRESS=contact@keycloak.org, CN=Keycloak Intermediate CA, OU=Keycloak, O=Red Hat, ST=MA, C=US");
+            clientConfig.setAllowRegexPatternComparison(false);
         });
         ClientResource clientResource = adminClient.realm(REALM_NAME).clients().get(clientUUID);
         ClientRepresentation client = clientResource.toRepresentation();
@@ -637,7 +637,7 @@ public class FAPI1Test extends AbstractClientPoliciesTest {
         requestObject.setNonce("123456"); // Nonce from method "checkNonceAndStateForCurrentClientDuringLogin()"
         oauth.responseType(OIDCResponseType.CODE + " " + OIDCResponseType.ID_TOKEN);
         requestObject.setResponseType(OIDCResponseType.CODE + " " + OIDCResponseType.ID_TOKEN);
-        registerRequestObject(requestObject, "foo", org.keycloak.jose.jws.Algorithm.PS256, true);
+        registerRequestObject(requestObject, "foo", Algorithm.PS256, true);
         oauth.openLoginForm();
         loginPage.assertCurrent();
 

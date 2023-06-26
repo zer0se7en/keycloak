@@ -49,6 +49,7 @@ import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 import org.keycloak.common.Profile;
+import org.keycloak.protocol.oidc.OIDCLoginProtocolService;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.testsuite.adapter.AbstractExampleAdapterTest;
 import org.keycloak.testsuite.adapter.page.Hawtio2Page;
@@ -60,7 +61,8 @@ import org.keycloak.testsuite.adapter.page.fuse.ProductPortalFuseExample;
 import org.keycloak.testsuite.arquillian.annotation.AppServerContainer;
 import org.keycloak.testsuite.arquillian.annotation.DisableFeature;
 import org.keycloak.testsuite.auth.page.AuthRealm;
-import org.keycloak.testsuite.auth.page.account.Account;
+import org.keycloak.testsuite.pages.LogoutConfirmPage;
+import org.keycloak.testsuite.util.SecondBrowser;
 import org.keycloak.testsuite.utils.arquillian.ContainerConstants;
 import org.keycloak.testsuite.auth.page.login.OIDCLogin;
 import org.keycloak.testsuite.util.DroneUtils;
@@ -74,6 +76,7 @@ import org.openqa.selenium.WebDriver;
 @AppServerContainer(ContainerConstants.APP_SERVER_FUSE7X)
 @DisableFeature(value = Profile.Feature.ACCOUNT2, skipRestart = true) // TODO remove this (KEYCLOAK-16228)
 public class FuseAdapterTest extends AbstractExampleAdapterTest {
+
 
     @Drone
     @JavascriptBrowser
@@ -103,9 +106,10 @@ public class FuseAdapterTest extends AbstractExampleAdapterTest {
     @Page
     @JavascriptBrowser
     protected ProductPortalFuseExample productPortal;
+
     @Page
     @JavascriptBrowser
-    protected Account testRealmAccount;
+    protected LogoutConfirmPage logoutConfirmPage;
 
     @Override
     public void addAdapterTestRealms(List<RealmRepresentation> testRealms) {
@@ -119,7 +123,6 @@ public class FuseAdapterTest extends AbstractExampleAdapterTest {
         testRealmLoginPageFuse.setAuthRealm(DEMO);
         testRealmPage.setAuthRealm(DEMO);
         testRealmLoginPage.setAuthRealm(DEMO);
-        testRealmAccount.setAuthRealm(DEMO);
         loginPageFuse.setAuthRealm(DEMO);
     }
 
@@ -146,11 +149,16 @@ public class FuseAdapterTest extends AbstractExampleAdapterTest {
         assertCurrentUrlStartsWith(loginPageFuse);
 
         testRealmLoginPageFuse.form().login("root", "password");
-        assertCurrentUrlStartsWith(hawtioPage.toString() + "/welcome");
-        hawtioPage.logout(jsDriver);
-        assertCurrentUrlStartsWith(testRealmLoginPageFuse);
+        assertCurrentUrlStartsWith(hawtioPage.toString());
+
+        String logoutUri = OIDCLoginProtocolService.logoutUrl(authServerPage.createUriBuilder())
+                        .build("demo").toString();
+        DroneUtils.getCurrentDriver().navigate().to(logoutUri);
+        WaitUtils.waitForPageToLoad();
+        logoutConfirmPage.confirmLogout();
 
         hawtioPage.navigateTo();
+        WaitUtils.waitForPageToLoad(); 
         log.debug("logging in as mary");
         testRealmLoginPageFuse.form().login("mary", "password");
         log.debug("Previous WARN waitForPageToLoad time exceeded! is expected");
@@ -330,23 +338,23 @@ public class FuseAdapterTest extends AbstractExampleAdapterTest {
 
         assertThat(DroneUtils.getCurrentDriver().getPageSource(), allOf(
             containsString("Username: bburke@redhat.com"),
-            containsString("Bill Burke"),
-            containsString("Stian Thorgersen")
+            containsString("Bill Burke")
         ));
 
         // account mgmt
         customerListing.clickAccountManagement();
 
-        assertCurrentUrlStartsWith(testRealmAccount);
-        assertThat(testRealmAccount.getUsername(), equalTo("bburke@redhat.com"));
-
         DroneUtils.getCurrentDriver().navigate().back();
         customerListing.clickLogOut();
+        logoutConfirmPage.confirmLogout();
 
-        // assert user not logged in
+        WaitUtils.pause(2500);
+        customerPortal.navigateTo();//needed for phantomjs
+        WaitUtils.waitForPageToLoad();
         customerPortal.clickCustomerListingLink();
+        WaitUtils.waitForPageToLoad();
+        // assert user not logged in
         assertCurrentUrlStartsWithLoginUrlOf(testRealmPage);
-
     }
 
     @Test
@@ -366,7 +374,7 @@ public class FuseAdapterTest extends AbstractExampleAdapterTest {
         customerListing.navigateTo();
         WaitUtils.waitForPageToLoad();
         customerListing.clickLogOut();
-        WaitUtils.waitForPageToLoad();
+        logoutConfirmPage.confirmLogout();
 
         WaitUtils.pause(2500);
         customerPortal.navigateTo();//needed for phantomjs

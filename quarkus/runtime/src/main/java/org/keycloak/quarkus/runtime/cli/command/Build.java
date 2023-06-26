@@ -22,6 +22,7 @@ import static org.keycloak.quarkus.runtime.Environment.isDevMode;
 import static org.keycloak.quarkus.runtime.cli.Picocli.println;
 import static org.keycloak.quarkus.runtime.configuration.ConfigArgsConfigSource.getAllCliArgs;
 
+import org.keycloak.config.OptionCategory;
 import org.keycloak.quarkus.runtime.Environment;
 import org.keycloak.quarkus.runtime.Messages;
 
@@ -29,18 +30,15 @@ import io.quarkus.bootstrap.runner.QuarkusEntryPoint;
 import io.quarkus.bootstrap.runner.RunnerClassLoader;
 
 import io.quarkus.runtime.configuration.ProfileManager;
+import picocli.CommandLine;
 import picocli.CommandLine.Command;
+
+import java.util.List;
 
 @Command(name = Build.NAME,
         header = "Creates a new and optimized server image.",
         description = {
             "%nCreates a new and optimized server image based on the configuration options passed to this command. Once created, the configuration will be persisted and read during startup without having to pass them over again.",
-            "",
-            "Some configuration options require this command to be executed in order to actually change a configuration. For instance",
-            "",
-            "- Change database vendor%n" +
-            "- Enable/disable features%n" +
-            "- Enable/Disable providers or set a default",
             "",
             "Consider running this command before running the server in production for an optimal runtime."
         },
@@ -51,17 +49,18 @@ import picocli.CommandLine.Command;
                 + "      $ ${PARENT-COMMAND-FULL-NAME:-$PARENTCOMMAND} ${COMMAND-NAME} --features=<feature_name>%n%n"
                 + "  Or alternatively, enable all tech preview features:%n%n"
                 + "      $ ${PARENT-COMMAND-FULL-NAME:-$PARENTCOMMAND} ${COMMAND-NAME} --features=preview%n%n"
-                + "  Enable metrics:%n%n"
+                + "  Enable health endpoints:%n%n"
+                + "      $ ${PARENT-COMMAND-FULL-NAME:-$PARENTCOMMAND} ${COMMAND-NAME} --health-enabled=true%n%n"
+                + "  Enable metrics endpoints:%n%n"
                 + "      $ ${PARENT-COMMAND-FULL-NAME:-$PARENTCOMMAND} ${COMMAND-NAME} --metrics-enabled=true%n%n"
                 + "  Change the relative path:%n%n"
-                + "      $ ${PARENT-COMMAND-FULL-NAME:-$PARENTCOMMAND} ${COMMAND-NAME} --http-relative-path=/auth%n%n"
-                + "You can also use the \"--auto-build\" option when starting the server to avoid running this command every time you change a configuration:%n%n"
-                + "    $ ${PARENT-COMMAND-FULL-NAME:-$PARENTCOMMAND} start --auto-build <OPTIONS>%n%n"
-                + "By doing that you have an additional overhead when the server is starting.%n%n"
-                + "Use '${PARENT-COMMAND-FULL-NAME:-$PARENTCOMMAND} ${COMMAND-NAME} --help-all' to list all available options, including the start options.")
+                + "      $ ${PARENT-COMMAND-FULL-NAME:-$PARENTCOMMAND} ${COMMAND-NAME} --http-relative-path=/auth%n")
 public final class Build extends AbstractCommand implements Runnable {
 
     public static final String NAME = "build";
+
+    @CommandLine.Mixin
+    HelpAllMixin helpAllMixin;
 
     @Override
     public void run() {
@@ -83,6 +82,16 @@ public final class Build extends AbstractCommand implements Runnable {
         } finally {
             cleanTempResources();
         }
+    }
+
+    @Override
+    public boolean includeBuildTime() {
+        return true;
+    }
+
+    public List<OptionCategory> getOptionCategories() {
+        // all options should work for the build command, otherwise re-augmentation might fail due to unknown options
+        return super.getOptionCategories();
     }
 
     private void exitWithErrorIfDevProfileIsSetAndNotStartDev() {

@@ -3,8 +3,8 @@ package org.keycloak.protocol.oidc;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriBuilder;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriBuilder;
 import org.keycloak.forms.login.LoginFormsProvider;
 import org.keycloak.headers.SecurityHeadersProvider;
 import org.keycloak.models.AuthenticatedClientSessionModel;
@@ -72,7 +72,8 @@ public class FrontChannelLogoutHandler {
     }
 
     private URI createFrontChannelLogoutUrl(ClientModel client) {
-        String frontChannelLogoutUrl = OIDCAdvancedConfigWrapper.fromClientModel(client).getFrontChannelLogoutUrl();
+        OIDCAdvancedConfigWrapper config = OIDCAdvancedConfigWrapper.fromClientModel(client);
+        String frontChannelLogoutUrl = config.getFrontChannelLogoutUrl();
 
         if (StringUtil.isBlank(frontChannelLogoutUrl)) {
             frontChannelLogoutUrl = client.getBaseUrl();
@@ -84,8 +85,10 @@ public class FrontChannelLogoutHandler {
 
         UriBuilder builder = UriBuilder.fromUri(frontChannelLogoutUrl);
 
-        builder.queryParam("sid", FrontChannelLogoutHandler.this.sid);
-        builder.queryParam("iss", FrontChannelLogoutHandler.this.issuer);
+        if (config.isFrontChannelLogoutSessionRequired()) {
+            builder.queryParam("sid", FrontChannelLogoutHandler.this.sid);
+            builder.queryParam("iss", FrontChannelLogoutHandler.this.issuer);
+        }
 
         return builder.build();
     }

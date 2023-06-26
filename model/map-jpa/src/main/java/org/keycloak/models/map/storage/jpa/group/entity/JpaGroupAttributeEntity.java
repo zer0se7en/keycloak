@@ -16,13 +16,17 @@
  */
 package org.keycloak.models.map.storage.jpa.group.entity;
 
-import javax.persistence.Entity;
-import javax.persistence.Table;
-import org.keycloak.models.map.storage.jpa.JpaAttributeEntity;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+
+import org.keycloak.models.map.storage.jpa.JpaAttributeEntityWithHashValue;
 
 @Entity
-@Table(name = "kc_group_attribute")
-public class JpaGroupAttributeEntity extends JpaAttributeEntity<JpaGroupEntity> {
+@Table(name = "kc_group_attribute", uniqueConstraints = {
+        @UniqueConstraint(columnNames = {"fk_root", "name", "value_hash"})
+})
+public class JpaGroupAttributeEntity extends JpaAttributeEntityWithHashValue<JpaGroupEntity> {
 
     public JpaGroupAttributeEntity() {
     }

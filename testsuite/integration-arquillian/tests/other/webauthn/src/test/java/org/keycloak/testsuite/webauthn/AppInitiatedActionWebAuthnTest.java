@@ -32,8 +32,6 @@ import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.RequiredActionProviderRepresentation;
 import org.keycloak.testsuite.actions.AbstractAppInitiatedActionTest;
 import org.keycloak.testsuite.admin.ApiUtil;
-import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude;
-import org.keycloak.testsuite.arquillian.annotation.EnableFeature;
 import org.keycloak.testsuite.pages.LoginUsernameOnlyPage;
 import org.keycloak.testsuite.pages.PasswordPage;
 import org.keycloak.testsuite.util.FlowUtil;
@@ -49,17 +47,14 @@ import java.util.function.Supplier;
 
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.keycloak.common.Profile.Feature.WEB_AUTHN;
 import static org.keycloak.models.AuthenticationExecutionModel.Requirement.ALTERNATIVE;
 import static org.keycloak.models.AuthenticationExecutionModel.Requirement.REQUIRED;
-import static org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude.AuthServer.REMOTE;
+import static org.keycloak.testsuite.util.BrowserDriverUtil.isDriverFirefox;
 import static org.keycloak.testsuite.util.WaitUtils.waitForPageToLoad;
 
 /**
  * @author <a href="mailto:mabartos@redhat.com">Martin Bartos</a>
  */
-@EnableFeature(value = WEB_AUTHN, skipRestart = true, onlyForProduct = true)
-@AuthServerContainerExclude(REMOTE)
 public class AppInitiatedActionWebAuthnTest extends AbstractAppInitiatedActionTest implements UseVirtualAuthenticators {
 
     private VirtualAuthenticatorManager virtualManager;
@@ -80,13 +75,17 @@ public class AppInitiatedActionWebAuthnTest extends AbstractAppInitiatedActionTe
     @Before
     @Override
     public void setUpVirtualAuthenticator() {
-        virtualManager = AbstractWebAuthnVirtualTest.createDefaultVirtualManager(driver, DefaultVirtualAuthOptions.DEFAULT.getOptions());
+        if (!isDriverFirefox(driver)) {
+            virtualManager = AbstractWebAuthnVirtualTest.createDefaultVirtualManager(driver, DefaultVirtualAuthOptions.DEFAULT.getOptions());
+        }
     }
 
     @After
     @Override
     public void removeVirtualAuthenticator() {
-        virtualManager.removeAuthenticator();
+        if (!isDriverFirefox(driver)) {
+            virtualManager.removeAuthenticator();
+        }
     }
 
     @Override
@@ -166,8 +165,6 @@ public class AppInitiatedActionWebAuthnTest extends AbstractAppInitiatedActionTe
         webAuthnRegisterPage.assertCurrent();
         webAuthnRegisterPage.clickRegister();
         webAuthnRegisterPage.registerWebAuthnCredential("authenticator1");
-
-        waitForPageToLoad();
 
         assertKcActionStatus(SUCCESS);
 

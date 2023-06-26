@@ -54,17 +54,15 @@ import org.keycloak.representations.idm.*;
 import org.keycloak.services.managers.AuthenticationManager;
 import org.keycloak.testsuite.AbstractKeycloakTest;
 import org.keycloak.testsuite.AssertEvents;
-import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude;
-import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude.AuthServer;
 import org.keycloak.testsuite.auth.page.AuthRealm;
 import org.keycloak.testsuite.pages.AppPage;
 import org.keycloak.testsuite.pages.LoginPage;
 import org.keycloak.testsuite.util.*;
 import org.openqa.selenium.Cookie;
 
-import javax.ws.rs.ClientErrorException;
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.Response;
+import jakarta.ws.rs.ClientErrorException;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.Response;
 import java.io.IOException;
 import java.net.URL;
 import java.util.*;
@@ -79,7 +77,6 @@ import static org.keycloak.testsuite.util.ServerURLs.getAuthServerContextRoot;
  *
  * @author <a href="mailto:bburke@redhat.com">Bill Burke</a>
  */
-@AuthServerContainerExclude(AuthServer.REMOTE)
 public class ImpersonationTest extends AbstractKeycloakTest {
 
     static class UserSessionNotesHolder {
@@ -280,7 +277,7 @@ public class ImpersonationTest extends AbstractKeycloakTest {
 
     // Return the SSO cookie from the impersonated session
     protected Set<Cookie> testSuccessfulImpersonation(String admin, String adminRealm) {
-        ResteasyClientBuilder resteasyClientBuilder = new ResteasyClientBuilder();
+        ResteasyClientBuilder resteasyClientBuilder = (ResteasyClientBuilder) ResteasyClientBuilder.newBuilder();
         resteasyClientBuilder.connectionPoolSize(10);
         resteasyClientBuilder.httpEngine(AdminClientUtil.getCustomClientHttpEngine(resteasyClientBuilder, 10, null));
         ResteasyClient resteasyClient = resteasyClientBuilder.build();
@@ -392,7 +389,7 @@ public class ImpersonationTest extends AbstractKeycloakTest {
 
     // Return the SSO cookie from the impersonated session
     protected Set<Cookie> testSuccessfulServiceAccountImpersonation(UserRepresentation serviceAccount, String serviceAccountRealm) {
-        ResteasyClientBuilder resteasyClientBuilder = new ResteasyClientBuilder();
+        ResteasyClientBuilder resteasyClientBuilder = (ResteasyClientBuilder) ResteasyClientBuilder.newBuilder();
         resteasyClientBuilder.connectionPoolSize(10);
         resteasyClientBuilder.httpEngine(AdminClientUtil.getCustomClientHttpEngine(resteasyClientBuilder, 10, null));
         ResteasyClient resteasyClient = resteasyClientBuilder.build();

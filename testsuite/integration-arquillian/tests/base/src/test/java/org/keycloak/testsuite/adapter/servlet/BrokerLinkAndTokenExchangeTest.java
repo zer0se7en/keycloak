@@ -23,7 +23,6 @@ import org.jboss.arquillian.test.api.ArquillianResource;
 import org.jboss.shrinkwrap.api.spec.WebArchive;
 import org.junit.Assert;
 import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Test;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.admin.client.resource.RealmResource;
@@ -53,7 +52,6 @@ import org.keycloak.representations.idm.authorization.ClientPolicyRepresentation
 import org.keycloak.representations.idm.authorization.DecisionStrategy;
 import org.keycloak.services.resources.admin.permissions.AdminPermissionManagement;
 import org.keycloak.services.resources.admin.permissions.AdminPermissions;
-import org.keycloak.testsuite.ProfileAssume;
 import org.keycloak.testsuite.adapter.AbstractServletsAdapterTest;
 import org.keycloak.testsuite.arquillian.annotation.AppServerContainer;
 import org.keycloak.testsuite.arquillian.annotation.DisableFeature;
@@ -61,24 +59,22 @@ import org.keycloak.testsuite.arquillian.annotation.EnableFeature;
 import org.keycloak.testsuite.arquillian.annotation.UncaughtServerErrorExpected;
 import org.keycloak.testsuite.broker.BrokerTestTools;
 import org.keycloak.testsuite.page.AbstractPageWithInjectedUrl;
-import org.keycloak.testsuite.pages.AccountUpdateProfilePage;
 import org.keycloak.testsuite.pages.ErrorPage;
 import org.keycloak.testsuite.pages.LoginPage;
 import org.keycloak.testsuite.pages.LoginUpdateProfilePage;
 import org.keycloak.testsuite.util.AdminClientUtil;
-import org.keycloak.testsuite.util.ContainerAssume;
 import org.keycloak.testsuite.util.OAuthClient;
 import org.keycloak.testsuite.util.WaitUtils;
 import org.keycloak.testsuite.utils.arquillian.ContainerConstants;
 import org.keycloak.util.BasicAuthHelper;
 
-import javax.ws.rs.client.Client;
-import javax.ws.rs.client.Entity;
-import javax.ws.rs.client.WebTarget;
-import javax.ws.rs.core.Form;
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriBuilder;
+import jakarta.ws.rs.client.Client;
+import jakarta.ws.rs.client.Entity;
+import jakarta.ws.rs.client.WebTarget;
+import jakarta.ws.rs.core.Form;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriBuilder;
 import java.io.File;
 import java.net.URL;
 import java.util.LinkedList;
@@ -87,16 +83,17 @@ import java.util.List;
 import static org.keycloak.testsuite.admin.ApiUtil.createUserAndResetPasswordWithAdminClient;
 
 /**
+ *
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
  * @version $Revision: 1 $
  */
 @AppServerContainer(ContainerConstants.APP_SERVER_UNDERTOW)
 @AppServerContainer(ContainerConstants.APP_SERVER_WILDFLY)
-@AppServerContainer(ContainerConstants.APP_SERVER_WILDFLY_DEPRECATED)
 @AppServerContainer(ContainerConstants.APP_SERVER_EAP)
 @AppServerContainer(ContainerConstants.APP_SERVER_EAP6)
 @AppServerContainer(ContainerConstants.APP_SERVER_EAP71)
 @EnableFeature(value = Profile.Feature.TOKEN_EXCHANGE, skipRestart = true)
+@EnableFeature(value = Profile.Feature.ADMIN_FINE_GRAINED_AUTHZ, skipRestart = true)
 public class BrokerLinkAndTokenExchangeTest extends AbstractServletsAdapterTest {
     public static final String CHILD_IDP = "child";
     public static final String PARENT_IDP = "parent-idp";
@@ -106,11 +103,6 @@ public class BrokerLinkAndTokenExchangeTest extends AbstractServletsAdapterTest 
     public static final String UNAUTHORIZED_CHILD_CLIENT = "unauthorized-child-client";
     public static final String PARENT_CLIENT = "parent-client";
 
-    @BeforeClass
-    public static void enabled() {
-        ProfileAssume.assumeFeatureEnabled(Profile.Feature.AUTHORIZATION);
-    }
-
     @Deployment(name = ClientApp.DEPLOYMENT_NAME)
     protected static WebArchive accountLink() {
         return servletDeployment(ClientApp.DEPLOYMENT_NAME, LinkAndExchangeServlet.class, ServletTestUtils.class);
@@ -118,9 +110,6 @@ public class BrokerLinkAndTokenExchangeTest extends AbstractServletsAdapterTest 
 
     @Page
     protected LoginUpdateProfilePage loginUpdateProfilePage;
-
-    @Page
-    protected AccountUpdateProfilePage profilePage;
 
     @Page
     private LoginPage loginPage;
@@ -233,7 +222,7 @@ public class BrokerLinkAndTokenExchangeTest extends AbstractServletsAdapterTest 
         user.setUsername(PARENT3_USERNAME);
         user.setFirstName("first name");
         user.setLastName("last name");
-        user.setEmail("email");
+        user.setEmail("email@keycloak.org");
         user.setEnabled(true);
         createUserAndResetPasswordWithAdminClient(realm, user, "password");        
     }
@@ -290,7 +279,7 @@ public class BrokerLinkAndTokenExchangeTest extends AbstractServletsAdapterTest 
         clientRep.addClient(client.getId());
         clientRep.addClient(directExchanger.getId());
         ResourceServer server = management.realmResourceServer();
-        Policy clientPolicy = management.authz().getStoreFactory().getPolicyStore().create(clientRep, server);
+        Policy clientPolicy = management.authz().getStoreFactory().getPolicyStore().create(server, clientRep);
         management.idps().exchangeToPermission(idp).addAssociatedPolicy(clientPolicy);
 
 
@@ -300,7 +289,7 @@ public class BrokerLinkAndTokenExchangeTest extends AbstractServletsAdapterTest 
         clientImpersonateRep.setName("clientImpersonators");
         clientImpersonateRep.addClient(directExchanger.getId());
         server = management.realmResourceServer();
-        Policy clientImpersonatePolicy = management.authz().getStoreFactory().getPolicyStore().create(clientImpersonateRep, server);
+        Policy clientImpersonatePolicy = management.authz().getStoreFactory().getPolicyStore().create(server, clientImpersonateRep);
         management.users().setPermissionsEnabled(true);
         management.users().adminImpersonatingPermission().addAssociatedPolicy(clientImpersonatePolicy);
         management.users().adminImpersonatingPermission().setDecisionStrategy(DecisionStrategy.AFFIRMATIVE);
@@ -422,6 +411,7 @@ public class BrokerLinkAndTokenExchangeTest extends AbstractServletsAdapterTest 
             Assert.assertNotEquals(externalToken, tokenResponse.getToken());
 
 
+            resetTimeOffset();
             logoutAll();
 
 
@@ -458,7 +448,7 @@ public class BrokerLinkAndTokenExchangeTest extends AbstractServletsAdapterTest 
 
     @Test
     @UncaughtServerErrorExpected
-    public void testAccountLinkNoTokenStore() throws Exception {
+    public void testAccountLinkNoTokenStore() {
         testingClient.server().run(BrokerLinkAndTokenExchangeTest::turnOffTokenStore);
 
         RealmResource realm = adminClient.realms().realm(CHILD_IDP);
@@ -475,7 +465,7 @@ public class BrokerLinkAndTokenExchangeTest extends AbstractServletsAdapterTest 
         Assert.assertTrue(loginPage.isCurrent(CHILD_IDP));
         Assert.assertTrue(driver.getPageSource().contains(PARENT_IDP));
         loginPage.login("child", "password");
-        Assert.assertTrue(loginPage.isCurrent(PARENT_IDP));
+        Assert.assertTrue("Unexpected page. Current Page URL: " + driver.getCurrentUrl(),loginPage.isCurrent(PARENT_IDP));
         loginPage.login(PARENT_USERNAME, "password");
         System.out.println("After linking: " + driver.getCurrentUrl());
         System.out.println(driver.getPageSource());
@@ -498,28 +488,27 @@ public class BrokerLinkAndTokenExchangeTest extends AbstractServletsAdapterTest 
 
     /**
      * KEYCLOAK-6026
-     * 
-     * @throws Exception
      */
     @Test
     @UncaughtServerErrorExpected
     public void testExportImport() throws Exception {
-        ContainerAssume.assumeNotAuthServerRemote();
-
         testExternalExchange();
-        testingClient.testing().exportImport().setProvider(SingleFileExportProviderFactory.PROVIDER_ID);
-        String targetFilePath = testingClient.testing().exportImport().getExportImportTestDirectory() + File.separator + "singleFile-full.json";
-        testingClient.testing().exportImport().setFile(targetFilePath);
-        testingClient.testing().exportImport().setAction(ExportImportConfig.ACTION_EXPORT);
-        testingClient.testing().exportImport().setRealmName(CHILD_IDP);
-        testingClient.testing().exportImport().runExport();
 
-        adminClient.realms().realm(CHILD_IDP).remove();
-        testingClient.testing().exportImport().setAction(ExportImportConfig.ACTION_IMPORT);
+        try {
+            testingClient.testing().exportImport().setProvider(SingleFileExportProviderFactory.PROVIDER_ID);
+            String targetFilePath = testingClient.testing().exportImport().getExportImportTestDirectory() + File.separator + "singleFile-full.json";
+            testingClient.testing().exportImport().setFile(targetFilePath);
+            testingClient.testing().exportImport().setAction(ExportImportConfig.ACTION_EXPORT);
+            testingClient.testing().exportImport().setRealmName(CHILD_IDP);
+            testingClient.testing().exportImport().runExport();
 
-        testingClient.testing().exportImport().runImport();
+            adminClient.realms().realm(CHILD_IDP).remove();
+            testingClient.testing().exportImport().setAction(ExportImportConfig.ACTION_IMPORT);
 
-        testingClient.testing().exportImport().clear();
+            testingClient.testing().exportImport().runImport();
+        } finally {
+            testingClient.testing().exportImport().clear();
+        }
 
         testExternalExchange();
     }
@@ -550,8 +539,8 @@ public class BrokerLinkAndTokenExchangeTest extends AbstractServletsAdapterTest 
             rep.getConfig().put("issuer", parentIssuer);
             adminClient.realm(CHILD_IDP).identityProviders().get(PARENT_IDP).update(rep);
 
-            String exchangedUserId = null;
-            String exchangedUsername = null;
+            String exchangedUserId;
+            String exchangedUsername;
 
             {
                 // test signature validation
@@ -697,7 +686,7 @@ public class BrokerLinkAndTokenExchangeTest extends AbstractServletsAdapterTest 
 
             {
                 // test unauthorized client gets 403
-                Response response = exchangeUrl.request()
+                try (Response response = exchangeUrl.request()
                         .header(HttpHeaders.AUTHORIZATION, BasicAuthHelper.createHeader(UNAUTHORIZED_CHILD_CLIENT, "password"))
                         .post(Entity.form(
                                 new Form()
@@ -706,8 +695,9 @@ public class BrokerLinkAndTokenExchangeTest extends AbstractServletsAdapterTest 
                                         .param(OAuth2Constants.SUBJECT_TOKEN_TYPE, OAuth2Constants.JWT_TOKEN_TYPE)
                                         .param(OAuth2Constants.SUBJECT_ISSUER, PARENT_IDP)
 
-                        ));
-                Assert.assertEquals(403, response.getStatus());
+                        ))) {
+                    Assert.assertEquals(403, response.getStatus());
+                }
             }
         } finally {
             httpClient.close();
@@ -754,7 +744,7 @@ public class BrokerLinkAndTokenExchangeTest extends AbstractServletsAdapterTest 
             Assert.assertEquals(PARENT3_USERNAME, token.getPreferredUsername());
             Assert.assertEquals("first name", token.getGivenName());
             Assert.assertEquals("last name", token.getFamilyName());
-            Assert.assertEquals("email", token.getEmail());
+            Assert.assertEquals("email@keycloak.org", token.getEmail());
 
             // cleanup remove the user
             childRealm.users().get(token.getSubject()).remove();
@@ -764,10 +754,8 @@ public class BrokerLinkAndTokenExchangeTest extends AbstractServletsAdapterTest 
     }
 
     public void logoutAll() {
-        String logoutUri = OIDCLoginProtocolService.logoutUrl(authServerPage.createUriBuilder()).build(CHILD_IDP).toString();
-        navigateTo(logoutUri);
-        logoutUri = OIDCLoginProtocolService.logoutUrl(authServerPage.createUriBuilder()).build(PARENT_IDP).toString();
-        navigateTo(logoutUri);
+        adminClient.realm(CHILD_IDP).logoutAll();
+        adminClient.realm(PARENT_IDP).logoutAll();
     }
 
     private void navigateTo(String uri) {

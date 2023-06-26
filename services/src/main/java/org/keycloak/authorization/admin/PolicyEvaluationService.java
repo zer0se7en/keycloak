@@ -1,13 +1,12 @@
 /*
- * JBoss, Home of Professional Open Source.
- * Copyright 2016 Red Hat, Inc., and individual contributors
- * as indicated by the @author tags.
+ * Copyright 2022 Red Hat, Inc. and/or its affiliates
+ * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -31,11 +30,11 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import javax.ws.rs.Consumes;
-import javax.ws.rs.POST;
-import javax.ws.rs.Produces;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.Response.Status;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.Response.Status;
 
 import org.jboss.logging.Logger;
 import org.keycloak.OAuthErrorException;
@@ -71,6 +70,7 @@ import org.keycloak.representations.idm.authorization.ScopeRepresentation;
 import org.keycloak.services.ErrorResponseException;
 import org.keycloak.services.Urls;
 import org.keycloak.services.managers.AuthenticationManager;
+import org.keycloak.services.managers.UserSessionManager;
 import org.keycloak.services.resources.admin.permissions.AdminPermissionEvaluator;
 import org.keycloak.sessions.AuthenticationSessionModel;
 
@@ -172,21 +172,21 @@ public class PolicyEvaluationService {
 
             ScopeStore scopeStore = storeFactory.getScopeStore();
 
-            Set<Scope> scopes = givenScopes.stream().map(scopeRepresentation -> scopeStore.findByName(scopeRepresentation.getName(), resourceServer.getId())).collect(Collectors.toSet());
+            Set<Scope> scopes = givenScopes.stream().map(scopeRepresentation -> scopeStore.findByName(resourceServer, scopeRepresentation.getName())).collect(Collectors.toSet());
 
             if (resource.getId() != null) {
-                Resource resourceModel = storeFactory.getResourceStore().findById(resource.getId(), resourceServer.getId());
+                Resource resourceModel = storeFactory.getResourceStore().findById(resourceServer.getRealm(), resourceServer, resource.getId());
                 return new ArrayList<>(Arrays.asList(
                         Permissions.createResourcePermissions(resourceModel, resourceServer, scopes, authorization, request))).stream();
             } else if (resource.getType() != null) {
-                return storeFactory.getResourceStore().findByType(resource.getType(), resourceServer.getId()).stream().map(resource1 -> Permissions.createResourcePermissions(resource1,
+                return storeFactory.getResourceStore().findByType(resourceServer, resource.getType()).stream().map(resource1 -> Permissions.createResourcePermissions(resource1,
                         resourceServer, scopes, authorization, request));
             } else {
                 if (scopes.isEmpty()) {
                     return Stream.empty();
                 }
 
-                List<Resource> resources = storeFactory.getResourceStore().findByScope(scopes.stream().map(Scope::getId).collect(Collectors.toList()), resourceServer.getId());
+                List<Resource> resources = storeFactory.getResourceStore().findByScopes(resourceServer, scopes);
 
                 if (resources.isEmpty()) {
                     return scopes.stream().map(scope -> new ResourcePermission(null, new ArrayList<>(Arrays.asList(scope)), resourceServer));
@@ -254,7 +254,7 @@ public class PolicyEvaluationService {
                 String clientId = representation.getClientId();
 
                 if (clientId == null) {
-                    clientId = resourceServer.getId();
+                    clientId = resourceServer.getClientId();
                 }
 
                 if (clientId != null) {
@@ -264,7 +264,7 @@ public class PolicyEvaluationService {
                             .createAuthenticationSession(clientModel);
                     authSession.setProtocol(OIDCLoginProtocol.LOGIN_PROTOCOL);
                     authSession.setAuthenticatedUser(userModel);
-                    userSession = keycloakSession.sessions().createUserSession(authSession.getParentSession().getId(), realm, userModel,
+                    userSession = new UserSessionManager(keycloakSession).createUserSession(authSession.getParentSession().getId(), realm, userModel,
                             userModel.getUsername(), "127.0.0.1", "passwd", false, null, null, UserSessionModel.SessionPersistenceState.PERSISTENT);
 
                     AuthenticationManager.setClientScopesInSession(authSession);
@@ -287,7 +287,7 @@ public class PolicyEvaluationService {
             }
 
             if (client == null) {
-                client = realm.getClientById(resourceServer.getId());
+                client = realm.getClientById(resourceServer.getClientId());
             }
 
             accessToken.issuedFor(client.getClientId());

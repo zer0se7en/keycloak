@@ -20,7 +20,6 @@ import {
     Button,
     Chip,
     ChipGroup,
-    ChipGroupToolbarItem,
     Form,
     FormGroup,
     Gallery,
@@ -28,7 +27,8 @@ import {
     Modal,
     Stack,
     StackItem,
-    TextInput
+    TextInput,
+    ModalVariant
 } from '@patternfly/react-core';
 
 import { AccountServiceContext } from '../../account-service/AccountServiceContext';
@@ -57,7 +57,7 @@ interface ShareTheResourceState {
  * @author Stan Silvert ssilvert@redhat.com (C) 2019 Red Hat Inc.
  */
 export class ShareTheResource extends React.Component<ShareTheResourceProps, ShareTheResourceState> {
-    protected static defaultProps = {permissions: []};
+    protected static defaultProps:any = {permissions: []};
     static contextType = AccountServiceContext;
     context: React.ContextType<typeof AccountServiceContext>;
 
@@ -99,7 +99,7 @@ export class ShareTheResource extends React.Component<ShareTheResourceProps, Sha
 
         this.handleToggleDialog();
 
-        this.context!.doPut(`/resources/${rscId}/permissions`, permissions)
+        this.context!.doPut(`/resources/${encodeURIComponent(rscId)}/permissions`, permissions)
             .then(() => {
                 ContentAlert.success('shareSuccess');
                 this.props.onClose();
@@ -122,7 +122,7 @@ export class ShareTheResource extends React.Component<ShareTheResourceProps, Sha
 
     private handleAddUsername = async () => {
         if ((this.state.usernameInput !== '') && (!this.state.usernames.includes(this.state.usernameInput))) {
-            const response = await this.context!.doGet<{username: string}>(`/resources/${this.props.resource._id}/user`, { params: { value: this.state.usernameInput } });
+            const response = await this.context!.doGet<{username: string}>(`/resources/${encodeURIComponent(this.props.resource._id)}/user`, { params: { value: this.state.usernameInput } });
             if (response.data && response.data.username) {
                 this.setState({ usernameInput: '', usernames: [...this.state.usernames, this.state.usernameInput] });
             } else {
@@ -166,7 +166,7 @@ export class ShareTheResource extends React.Component<ShareTheResourceProps, Sha
 
                 <Modal
                 title={'Share the resource - ' + this.props.resource.name}
-                isLarge={true}
+                variant={ModalVariant.large}
                 isOpen={this.state.isOpen}
                 onClose={this.handleToggleDialog}
                 actions={[
@@ -178,7 +178,7 @@ export class ShareTheResource extends React.Component<ShareTheResourceProps, Sha
                     </Button>
                 ]}
                 >
-                    <Stack gutter='md'>
+                    <Stack hasGutter>
                         <StackItem isFilled>
                         <Form>
                             <FormGroup
@@ -187,13 +187,11 @@ export class ShareTheResource extends React.Component<ShareTheResourceProps, Sha
                                 helperTextInvalid={Msg.localize('resourceAlreadyShared')}
                                 fieldId="username"
                                 isRequired
-                                isValid={!this.isAlreadyShared()}
                                 >
-                                    <Gallery gutter='sm'>
+                                    <Gallery hasGutter>
                                         <GalleryItem>
                                             <TextInput
                                                 value={this.state.usernameInput}
-                                                isValid={!this.isAlreadyShared()}
                                                 id="username"
                                                 aria-describedby="username-helper"
                                                 placeholder="Username or email"
@@ -208,14 +206,12 @@ export class ShareTheResource extends React.Component<ShareTheResourceProps, Sha
                                         </GalleryItem>
 
                                 </Gallery>
-                                <ChipGroup withToolbar>
-                                    <ChipGroupToolbarItem key='users-selected' categoryName='Share with '>
+                                <ChipGroup categoryName={Msg.localize('shareWith')}>
                                     {this.state.usernames.map((currentChip: string) => (
                                         <Chip key={currentChip} onClick={() => this.handleDeleteUsername(currentChip)}>
                                             {currentChip}
                                         </Chip>
                                     ))}
-                                    </ChipGroupToolbarItem>
                                 </ChipGroup>
                             </FormGroup>
                             <FormGroup

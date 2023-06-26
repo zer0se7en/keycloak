@@ -28,15 +28,15 @@ import org.keycloak.models.jpa.entities.GroupRoleMappingEntity;
 import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.models.utils.RoleUtils;
 
-import javax.persistence.EntityManager;
-import javax.persistence.TypedQuery;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.TypedQuery;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Stream;
-import javax.persistence.LockModeType;
+import jakarta.persistence.LockModeType;
 
 import static org.keycloak.utils.StreamsUtil.closing;
 
@@ -44,7 +44,7 @@ import static org.keycloak.utils.StreamsUtil.closing;
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
  * @version $Revision: 1 $
  */
-public class GroupAdapter implements GroupModel.Streams , JpaModel<GroupEntity> {
+public class GroupAdapter implements GroupModel , JpaModel<GroupEntity> {
 
     protected GroupEntity group;
     protected EntityManager em;
@@ -214,7 +214,9 @@ public class GroupAdapter implements GroupModel.Streams , JpaModel<GroupEntity> 
 
     @Override
     public boolean hasRole(RoleModel role) {
-        return RoleUtils.hasRole(getRoleMappingsStream(), role);
+        if (RoleUtils.hasRole(getRoleMappingsStream(), role)) return true;
+        GroupModel parent = getParent();
+        return parent != null && parent.hasRole(role);
     }
 
     protected TypedQuery<GroupRoleMappingEntity> getGroupRoleMappingEntityTypedQuery(RoleModel role) {

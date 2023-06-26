@@ -17,22 +17,29 @@
 
 package org.keycloak.it.cli.dist;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
 import java.util.function.Consumer;
+
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.keycloak.it.junit5.extension.BeforeStartDistribution;
 import org.keycloak.it.junit5.extension.CLIResult;
 import org.keycloak.it.junit5.extension.DistributionTest;
+import org.keycloak.it.junit5.extension.LegacyStore;
 import org.keycloak.it.junit5.extension.RawDistOnly;
 import org.keycloak.it.utils.KeycloakDistribution;
 
 import io.quarkus.test.junit.main.Launch;
 import io.quarkus.test.junit.main.LaunchResult;
 
-@DistributionTest
+@DistributionTest(reInstall = DistributionTest.ReInstall.BEFORE_TEST)
 @RawDistOnly(reason = "Not possible to mount files using docker.")
+@LegacyStore(defaultLocalCache = false)
 public class ClusterConfigDistTest {
 
     @Test
@@ -69,12 +76,23 @@ public class ClusterConfigDistTest {
     }
 
     @Test
-    @Launch({ "start", "--auto-build", "--http-enabled=true", "--hostname-strict false" })
+    @EnabledOnOs(value = { OS.LINUX, OS.MAC }, disabledReason = "different shell escaping behaviour on Windows.")
+    @Launch({ "start", "--log-level=info,org.infinispan.remoting.transport.jgroups.JGroupsTransport:debug","--http-enabled=true", "--hostname-strict=false" })
     void testStartDefaultsToClustering(LaunchResult result) {
         CLIResult cliResult = (CLIResult) result;
         cliResult.assertStarted();
         cliResult.assertClusteredCache();
-        assertTrue(cliResult.getOutput().contains("org.jgroups.protocols.UDP"));
+        assertTrue(cliResult.getOutput().contains("JGroups protocol stack: UDP"));
+    }
+
+    @Test
+    @EnabledOnOs(value = { OS.WINDOWS }, disabledReason = "different shell behaviour on Windows.")
+    @Launch({ "start", "--log-level=\"info,org.infinispan.remoting.transport.jgroups.JGroupsTransport:debug\"","--http-enabled=true", "--hostname-strict=false" })
+    void testWinStartDefaultsToClustering(LaunchResult result) {
+        CLIResult cliResult = (CLIResult) result;
+        cliResult.assertStarted();
+        cliResult.assertClusteredCache();
+        assertTrue(cliResult.getOutput().contains("JGroups protocol stack: UDP"));
     }
 
     @Test
@@ -90,7 +108,7 @@ public class ClusterConfigDistTest {
     @Launch({ "start-dev", "--cache-config-file=cache-ispn-asym-enc.xml" })
     void testCustomCacheStackInConfigFile(LaunchResult result) {
         CLIResult cliResult = (CLIResult) result;
-        assertTrue(cliResult.getOutput().contains("ERROR: server.jks"));
+        assertThat(cliResult.getOutput(), Matchers.containsString("ISPN000078: Starting JGroups channel `ISPN` with stack `encrypt-udp`"));
     }
 
     public static class ConfigureCacheUsingAsyncEncryption implements Consumer<KeycloakDistribution> {

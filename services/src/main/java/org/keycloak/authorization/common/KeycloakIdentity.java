@@ -38,13 +38,15 @@ import org.keycloak.services.ErrorResponseException;
 import org.keycloak.services.util.DefaultClientSessionContext;
 import org.keycloak.util.JsonSerialization;
 
-import javax.ws.rs.core.Response.Status;
+import jakarta.ws.rs.core.Response.Status;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+
+import static org.keycloak.utils.LockObjectsForModification.lockUserSessionsForModification;
 
 /**
  * @author <a href="mailto:psilva@redhat.com">Pedro Igor</a>
@@ -97,13 +99,21 @@ public class KeycloakIdentity implements Identity {
                         values.add(valueIterator.next().asText());
                     }
                 } else {
-                    String value = fieldValue.asText();
+                    // If the claim is key value pair then just take it as is to attributes.
+                    if(!fieldValue.isObject()) {
+                        String value = fieldValue.asText();
 
-                    if (StringUtil.isNullOrEmpty(value)) {
-                        continue;
+                        if (StringUtil.isNullOrEmpty(value)) {
+                            continue;
+                        }
+                        values.add(value);
                     }
-
-                    values.add(value);
+                    // otherwise, the claim is a JSON object, turn it into json String, so it'll be able to evaluate it later
+                    // in the regex policy evaluator
+                    else
+                    {
+                        values.add(fieldValue.toString());
+                    }
                 }
 
                 if (!values.isEmpty()) {
@@ -118,7 +128,7 @@ public class KeycloakIdentity implements Identity {
             this.accessToken = AccessToken.class.cast(token);
         } else {
             UserSessionProvider sessions = keycloakSession.sessions();
-            UserSessionModel userSession = sessions.getUserSession(realm, token.getSessionState());
+            UserSessionModel userSession = lockUserSessionsForModification(keycloakSession, () -> sessions.getUserSession(realm, token.getSessionState()));
 
             if (userSession == null) {
                 userSession = sessions.getOfflineUserSession(realm, token.getSessionState());
@@ -129,7 +139,7 @@ public class KeycloakIdentity implements Identity {
             }
 
             ClientModel client = realm.getClientByClientId(token.getIssuedFor());
-            AuthenticatedClientSessionModel clientSessionModel = userSession.getAuthenticatedClientSessions().get(client.getId());
+            AuthenticatedClientSessionModel clientSessionModel = userSession.getAuthenticatedClientSessionByClient(client.getId());
 
             ClientSessionContext clientSessionCtx = DefaultClientSessionContext.fromClientSessionScopeParameter(clientSessionModel, keycloakSession);
             this.accessToken = new TokenManager().createClientAccessToken(keycloakSession, realm, client, userSession.getUser(), userSession, clientSessionCtx);
@@ -150,7 +160,7 @@ public class KeycloakIdentity implements Identity {
         ClientModel clientModel = getTargetClient();
         UserModel clientUser = null;
 
-        if (clientModel != null) {
+        if (clientModel != null && clientModel.isServiceAccountsEnabled()) {
             clientUser = this.keycloakSession.users().getServiceAccount(clientModel);
         }
 
@@ -195,6 +205,8 @@ public class KeycloakIdentity implements Identity {
                     while (valueIterator.hasNext()) {
                         values.add(valueIterator.next().asText());
                     }
+                } else if (fieldValue.isObject()) {
+                    values.add(fieldValue.toString());
                 } else {
                     String value = fieldValue.asText();
 
@@ -225,11 +237,14 @@ public class KeycloakIdentity implements Identity {
             ClientModel clientModel = getTargetClient();
             UserModel clientUser = null;
 
-            if (clientModel != null) {
+            if (clientModel != null && clientModel.isServiceAccountsEnabled()) {
                 clientUser = this.keycloakSession.users().getServiceAccount(clientModel);
             }
 
             UserModel userSession = getUserFromToken();
+            if (userSession == null) {
+                throw new IllegalArgumentException("User from token not found");
+            }
 
             this.resourceServer = clientUser != null && userSession.getId().equals(clientUser.getId());
 
@@ -282,7 +297,7 @@ public class KeycloakIdentity implements Identity {
         }
 
         UserSessionProvider sessions = keycloakSession.sessions();
-        UserSessionModel userSession = sessions.getUserSession(realm, accessToken.getSessionState());
+        UserSessionModel userSession = lockUserSessionsForModification(keycloakSession, () -> sessions.getUserSession(realm, accessToken.getSessionState()));
 
         if (userSession == null) {
             userSession = sessions.getOfflineUserSession(realm, accessToken.getSessionState());

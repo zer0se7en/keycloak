@@ -24,11 +24,12 @@ import org.keycloak.models.map.common.AbstractEntity;
 import org.keycloak.models.map.common.DeepCloner;
 import org.keycloak.models.map.common.EntityWithAttributes;
 import org.keycloak.models.map.common.UpdatableEntity;
+import org.keycloak.models.map.credential.DefaultMapSubjectCredentialManagerEntity;
+import org.keycloak.models.map.credential.MapSubjectCredentialManagerEntity;
 import org.keycloak.models.utils.KeycloakModelUtils;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -39,7 +40,7 @@ import java.util.Set;
 @DeepCloner.Root
 public interface MapUserEntity extends UpdatableEntity, AbstractEntity, EntityWithAttributes {
 
-    public abstract class AbstractUserEntity extends UpdatableEntity.Impl implements MapUserEntity {
+    abstract class AbstractUserEntity extends Impl implements MapUserEntity {
 
         private static final Logger LOG = Logger.getLogger(MapUserProvider.class);
         private String id;
@@ -77,38 +78,6 @@ public interface MapUserEntity extends UpdatableEntity, AbstractEntity, EntityWi
         public void setEmail(String email, boolean duplicateEmailsAllowed) {
             this.setEmail(email);
             this.setEmailConstraint(email == null || duplicateEmailsAllowed ? KeycloakModelUtils.generateId() : email);
-        }
-
-        @Override
-        public Optional<MapUserConsentEntity> getUserConsent(String clientId) {
-            Set<MapUserConsentEntity> ucs = getUserConsents();
-            if (ucs == null || ucs.isEmpty()) return Optional.empty();
-
-            return ucs.stream().filter(uc -> Objects.equals(uc.getClientId(), clientId)).findFirst();
-        }
-
-        @Override
-        public Boolean removeUserConsent(String clientId) {
-            Set<MapUserConsentEntity> consents = getUserConsents();
-            boolean removed = consents != null && consents.removeIf(uc -> Objects.equals(uc.getClientId(), clientId));
-            this.updated |= removed;
-            return removed;
-        }
-
-        @Override
-        public Optional<MapUserCredentialEntity> getCredential(String id) {
-            List<MapUserCredentialEntity> uce = getCredentials();
-            if (uce == null || uce.isEmpty()) return Optional.empty();
-
-            return uce.stream().filter(uc -> Objects.equals(uc.getId(), id)).findFirst();
-        }
-
-        @Override
-        public Boolean removeCredential(String id) {
-            List<MapUserCredentialEntity> credentials = getCredentials();
-            boolean removed = credentials != null && credentials.removeIf(c -> Objects.equals(c.getId(), id));
-            this.updated |= removed;
-            return removed;
         }
 
         @Override
@@ -150,24 +119,8 @@ public interface MapUserEntity extends UpdatableEntity, AbstractEntity, EntityWi
             int indexToRemove = toMoveIndex < ourCredentialIndex ? ourCredentialIndex + 1 : ourCredentialIndex;
             credentialsList.remove(indexToRemove);
 
-            this.updated = true;
+            markUpdatedFlag();
             return true;
-        }
-
-        @Override
-        public Optional<MapUserFederatedIdentityEntity> getFederatedIdentity(String identityProviderId) {
-            Set<MapUserFederatedIdentityEntity> fes = getFederatedIdentities();
-            if (fes == null || fes.isEmpty()) return Optional.empty();
-
-            return fes.stream().filter(fi -> Objects.equals(fi.getIdentityProvider(), identityProviderId)).findFirst();
-        }
-
-        @Override
-        public Boolean removeFederatedIdentity(String identityProviderId) {
-            Set<MapUserFederatedIdentityEntity> federatedIdentities = getFederatedIdentities();
-            boolean removed = federatedIdentities != null && federatedIdentities.removeIf(fi -> Objects.equals(fi.getIdentityProvider(), identityProviderId));
-            this.updated |= removed;
-            return removed;
         }
     }
 
@@ -244,6 +197,10 @@ public interface MapUserEntity extends UpdatableEntity, AbstractEntity, EntityWi
     String getServiceAccountClientLink();
     void setServiceAccountClientLink(String serviceAccountClientLink);
 
-    Integer getNotBefore();
-    void setNotBefore(Integer notBefore);
+    Long getNotBefore();
+    void setNotBefore(Long notBefore);
+
+    default MapSubjectCredentialManagerEntity credentialManager() {
+        return new DefaultMapSubjectCredentialManagerEntity();
+    }
 }

@@ -26,25 +26,26 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.persistence.Basic;
-import javax.persistence.CascadeType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.FetchType;
-import javax.persistence.Id;
-import javax.persistence.OneToMany;
-import javax.persistence.Table;
-import javax.persistence.UniqueConstraint;
-import javax.persistence.Version;
+import jakarta.persistence.Basic;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import org.hibernate.annotations.Type;
-import org.hibernate.annotations.TypeDef;
-import org.hibernate.annotations.TypeDefs;
 import org.keycloak.models.map.client.MapClientEntity.AbstractClientEntity;
 import org.keycloak.models.map.client.MapProtocolMapperEntity;
 import org.keycloak.models.map.common.DeepCloner;
 import static org.keycloak.models.map.storage.jpa.Constants.CURRENT_SCHEMA_VERSION_CLIENT;
-import org.keycloak.models.map.storage.jpa.JpaRootEntity;
+
+import org.keycloak.models.map.common.UuidValidator;
+import org.keycloak.models.map.storage.jpa.JpaRootVersionedEntity;
 import org.keycloak.models.map.storage.jpa.hibernate.jsonb.JsonbType;
+import java.util.Optional;
 
 /**
  * There are some fields marked by {@code @Column(insertable = false, updatable = false)}.
@@ -58,8 +59,7 @@ import org.keycloak.models.map.storage.jpa.hibernate.jsonb.JsonbType;
                     columnNames = {"realmId", "clientId"}
             )
 })
-@TypeDefs({@TypeDef(name = "jsonb", typeClass = JsonbType.class)})
-public class JpaClientEntity extends AbstractClientEntity implements JpaRootEntity {
+public class JpaClientEntity extends AbstractClientEntity implements JpaRootVersionedEntity {
 
     @Id
     @Column
@@ -70,7 +70,7 @@ public class JpaClientEntity extends AbstractClientEntity implements JpaRootEnti
     @Column
     private int version;
 
-    @Type(type = "jsonb")
+    @Type(JsonbType.class)
     @Column(columnDefinition = "jsonb")
     private final JpaClientMetadata metadata;
 
@@ -156,7 +156,8 @@ public class JpaClientEntity extends AbstractClientEntity implements JpaRootEnti
 
     @Override
     public void setId(String id) {
-        this.id = id == null ? null : UUID.fromString(id);
+        String validatedId = UuidValidator.validateAndConvert(id);
+        this.id = UUID.fromString(validatedId);
     }
 
     @Override
@@ -208,23 +209,23 @@ public class JpaClientEntity extends AbstractClientEntity implements JpaRootEnti
     }
 
     @Override
-    public MapProtocolMapperEntity getProtocolMapper(String id) {
+    public Set<MapProtocolMapperEntity> getProtocolMappers() {
+        return metadata.getProtocolMappers();
+    }
+
+    @Override
+    public Optional<MapProtocolMapperEntity> getProtocolMapper(String id) {
         return metadata.getProtocolMapper(id);
     }
 
     @Override
-    public Map<String, MapProtocolMapperEntity> getProtocolMappers() {
-        return metadata.getProtocolMappers();
+    public void addProtocolMapper(MapProtocolMapperEntity mapping) {
+        metadata.addProtocolMapper(mapping);
     }
 
     @Override
     public void removeProtocolMapper(String id) {
         metadata.removeProtocolMapper(id);
-    }
-
-    @Override
-    public void setProtocolMapper(String id, MapProtocolMapperEntity mapping) {
-        metadata.setProtocolMapper(id, mapping);
     }
 
     @Override
@@ -363,12 +364,12 @@ public class JpaClientEntity extends AbstractClientEntity implements JpaRootEnti
     }
 
     @Override
-    public Integer getNotBefore() {
+    public Long getNotBefore() {
         return metadata.getNotBefore();
     }
 
     @Override
-    public void setNotBefore(Integer notBefore) {
+    public void setNotBefore(Long notBefore) {
         metadata.setNotBefore(notBefore);
     }
 

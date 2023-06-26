@@ -2,80 +2,59 @@ package org.keycloak.quarkus.runtime.configuration.mappers;
 
 import io.smallrye.config.ConfigSourceInterceptorContext;
 import io.smallrye.config.ConfigValue;
+
+import org.keycloak.config.ConfigSupportLevel;
+import org.keycloak.config.OptionCategory;
 import org.keycloak.quarkus.runtime.Environment;
 import org.keycloak.quarkus.runtime.configuration.ConfigArgsConfigSource;
-import org.keycloak.quarkus.runtime.configuration.MicroProfileConfigProvider;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.function.Predicate;
-import java.util.stream.Collectors;
+import java.util.function.Function;
 
 public final class PropertyMappers {
 
     public static String VALUE_MASK = "*******";
-    static final MappersConfig MAPPERS = new MappersConfig();
+    private static final MappersConfig MAPPERS = new MappersConfig();
 
     private PropertyMappers(){}
 
     static {
-        MAPPERS.addAll(ClusteringPropertyMappers.getClusteringPropertyMappers());
+        MAPPERS.addAll(CachingPropertyMappers.getClusteringPropertyMappers());
         MAPPERS.addAll(DatabasePropertyMappers.getDatabasePropertyMappers());
         MAPPERS.addAll(HostnamePropertyMappers.getHostnamePropertyMappers());
         MAPPERS.addAll(HttpPropertyMappers.getHttpPropertyMappers());
+        MAPPERS.addAll(HealthPropertyMappers.getHealthPropertyMappers());
+        MAPPERS.addAll(ConfigKeystorePropertyMappers.getConfigKeystorePropertyMappers());
         MAPPERS.addAll(MetricsPropertyMappers.getMetricsPropertyMappers());
         MAPPERS.addAll(ProxyPropertyMappers.getProxyPropertyMappers());
         MAPPERS.addAll(VaultPropertyMappers.getVaultPropertyMappers());
         MAPPERS.addAll(FeaturePropertyMappers.getMappers());
         MAPPERS.addAll(LoggingPropertyMappers.getMappers());
         MAPPERS.addAll(TransactionPropertyMappers.getTransactionPropertyMappers());
+        MAPPERS.addAll(StoragePropertyMappers.getMappers());
+        MAPPERS.addAll(ClassLoaderPropertyMappers.getMappers());
+        MAPPERS.addAll(SecurityPropertyMappers.getMappers());
+        MAPPERS.addAll(ExportPropertyMappers.getMappers());
+        MAPPERS.addAll(ImportPropertyMappers.getMappers());
     }
 
     public static ConfigValue getValue(ConfigSourceInterceptorContext context, String name) {
         PropertyMapper mapper = MAPPERS.getOrDefault(name, PropertyMapper.IDENTITY);
-        ConfigValue configValue = mapper.getConfigValue(name, context);
-
-        if (configValue == null) {
-            Optional<String> prefixedMapper = getPrefixedMapper(name);
-
-            if (prefixedMapper.isPresent()) {
-                return MAPPERS.get(prefixedMapper.get()).getConfigValue(name, context);
-            }
-        } else {
-            configValue.withName(mapper.getTo());
-        }
-
-        return configValue;
+        return mapper.getConfigValue(name, context);
     }
 
     public static boolean isBuildTimeProperty(String name) {
-        if (isFeaturesBuildTimeProperty(name) || isSpiBuildTimeProperty(name) || name.startsWith(MicroProfileConfigProvider.NS_QUARKUS_PREFIX)) {
+        if (isFeaturesBuildTimeProperty(name) || isSpiBuildTimeProperty(name)) {
             return true;
         }
 
-        if (!name.startsWith(MicroProfileConfigProvider.NS_KEYCLOAK_PREFIX)) {
-            return false;
-        }
-
-        boolean isBuildTimeProperty = MAPPERS.entrySet().stream()
-                .anyMatch(new Predicate<Map.Entry<String, PropertyMapper>>() {
-                    @Override
-                    public boolean test(Map.Entry<String, PropertyMapper> entry) {
-                        PropertyMapper mapper = entry.getValue();
-                        return (mapper.getFrom().equals(name) || mapper.getTo().equals(name)) && mapper.isBuildTime();
-                    }
-                });
-
-        if (!isBuildTimeProperty) {
-            Optional<String> prefixedMapper = PropertyMappers.getPrefixedMapper(name);
-
-            if (prefixedMapper.isPresent()) {
-                isBuildTimeProperty = MAPPERS.get(prefixedMapper.get()).isBuildTime();
-            }
-        }
+        PropertyMapper mapper = MAPPERS.get(name);
+        boolean isBuildTimeProperty = mapper == null ? false : mapper.isBuildTime();
 
         return isBuildTimeProperty
                 && !"kc.version".equals(name)
@@ -96,14 +75,12 @@ public final class PropertyMappers {
         return name.startsWith("kc.features");
     }
 
-    public static List<PropertyMapper> getRuntimeMappers() {
-        return MAPPERS.values().stream()
-                .filter(entry -> !entry.isBuildTime()).collect(Collectors.toList());
+    public static Map<OptionCategory, List<PropertyMapper>> getRuntimeMappers() {
+        return MAPPERS.getRuntimeMappers();
     }
 
-    public static List<PropertyMapper> getBuildTimeMappers() {
-        return MAPPERS.values().stream()
-                .filter(PropertyMapper::isBuildTime).collect(Collectors.toList());
+    public static Map<OptionCategory, List<PropertyMapper>> getBuildTimeMappers() {
+        return MAPPERS.getBuildTimeMappers();
     }
 
     public static String formatValue(String property, String value) {
@@ -136,26 +113,14 @@ public final class PropertyMappers {
         return MAPPERS.values();
     }
 
-    private static Optional<String> getPrefixedMapper(String name) {
-        return MAPPERS.entrySet().stream().filter(
-                new Predicate<Map.Entry<String, PropertyMapper>>() {
-                    @Override
-                    public boolean test(Map.Entry<String, PropertyMapper> entry) {
-                        String key = entry.getKey();
-
-                        if (!key.endsWith(".")) {
-                            return false;
-                        }
-
-                        // checks both to and from mapping
-                        return name.startsWith(key) || name.startsWith(entry.getValue().getFrom());
-                    }
-                })
-                .map(Map.Entry::getKey)
-                .findAny();
+    public static boolean isSupported(PropertyMapper mapper) {
+        return mapper.getCategory().getSupportLevel().equals(ConfigSupportLevel.SUPPORTED);
     }
 
     private static class MappersConfig extends HashMap<String, PropertyMapper> {
+
+        private Map<OptionCategory, List<PropertyMapper>> buildTimeMappers = new EnumMap<>(OptionCategory.class);
+        private Map<OptionCategory, List<PropertyMapper>> runtimeTimeMappers = new EnumMap<>(OptionCategory.class);
 
         public void addAll(PropertyMapper[] mappers) {
             for (PropertyMapper mapper : mappers) {
@@ -163,7 +128,23 @@ public final class PropertyMappers {
                 super.put(mapper.getFrom(), mapper);
                 super.put(mapper.getCliFormat(), mapper);
                 super.put(mapper.getEnvVarFormat(), mapper);
+
+                if (mapper.isBuildTime()) {
+                    addMapperByStage(mapper, buildTimeMappers);
+                } else {
+                    addMapperByStage(mapper, runtimeTimeMappers);
+                }
             }
+        }
+
+        private void addMapperByStage(PropertyMapper mapper, Map<OptionCategory, List<PropertyMapper>> mappers) {
+            mappers.computeIfAbsent(mapper.getCategory(),
+                    new Function<OptionCategory, List<PropertyMapper>>() {
+                        @Override
+                        public List<PropertyMapper> apply(OptionCategory c) {
+                            return new ArrayList<>();
+                        }
+                    }).add(mapper);
         }
 
         @Override
@@ -173,5 +154,14 @@ public final class PropertyMappers {
             }
             return super.put(key, value);
         }
+
+        public Map<OptionCategory, List<PropertyMapper>> getRuntimeMappers() {
+            return runtimeTimeMappers;
+        }
+
+        public Map<OptionCategory, List<PropertyMapper>> getBuildTimeMappers() {
+            return buildTimeMappers;
+        }
     }
+
 }

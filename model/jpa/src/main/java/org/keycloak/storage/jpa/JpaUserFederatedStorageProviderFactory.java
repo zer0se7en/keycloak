@@ -17,19 +17,21 @@
 package org.keycloak.storage.jpa;
 
 import org.keycloak.Config;
+import org.keycloak.common.Profile;
 import org.keycloak.connections.jpa.JpaConnectionProvider;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
+import org.keycloak.provider.EnvironmentDependentProviderFactory;
 import org.keycloak.storage.federated.UserFederatedStorageProvider;
 import org.keycloak.storage.federated.UserFederatedStorageProviderFactory;
 
-import javax.persistence.EntityManager;
+import jakarta.persistence.EntityManager;
 
 /**
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
  * @version $Revision: 1 $
  */
-public class JpaUserFederatedStorageProviderFactory implements UserFederatedStorageProviderFactory {
+public class JpaUserFederatedStorageProviderFactory implements UserFederatedStorageProviderFactory, EnvironmentDependentProviderFactory {
     @Override
     public UserFederatedStorageProvider create(KeycloakSession session) {
         EntityManager em = session.getProvider(JpaConnectionProvider.class).getEntityManager();
@@ -55,4 +57,10 @@ public class JpaUserFederatedStorageProviderFactory implements UserFederatedStor
     public String getId() {
         return "jpa";
     }
+
+    @Override
+    public boolean isSupported() {
+        return !Profile.isFeatureEnabled(Profile.Feature.MAP_STORAGE);
+    }
+
 }

@@ -25,6 +25,7 @@ import org.keycloak.models.cache.CachedRealmModel;
 import org.keycloak.models.cache.UserCache;
 import org.keycloak.models.cache.infinispan.entities.CachedRealm;
 import org.keycloak.storage.UserStorageProvider;
+import org.keycloak.storage.UserStorageUtil;
 import org.keycloak.storage.client.ClientStorageProvider;
 
 import java.util.*;
@@ -666,12 +667,6 @@ public class RealmAdapter implements CachedRealmModel {
     }
 
     @Override
-    public List<RequiredCredentialModel> getRequiredCredentials() {
-        if (isUpdated()) return updated.getRequiredCredentials();
-        return cached.getRequiredCredentials();
-    }
-
-    @Override
     public void addRequiredCredential(String cred) {
         getDelegateForUpdate();
         updated.addRequiredCredential(cred);
@@ -749,32 +744,6 @@ public class RealmAdapter implements CachedRealmModel {
     public void removeDefaultGroup(GroupModel group) {
         getDelegateForUpdate();
         updated.removeDefaultGroup(group);
-
-    }
-
-    @Override
-    @Deprecated
-    public Stream<String> getDefaultRolesStream() {
-        if (isUpdated()) return updated.getDefaultRolesStream();
-        return getDefaultRole().getCompositesStream().filter(this::isRealmRole).map(RoleModel::getName);
-    }
-
-    private boolean isRealmRole(RoleModel role) {
-        return ! role.isClientRole();
-    }
-
-    @Override
-    @Deprecated
-    public void addDefaultRole(String name) {
-        getDelegateForUpdate();
-        updated.addDefaultRole(name);
-    }
-
-    @Override
-    @Deprecated
-    public void removeDefaultRoles(String... defaultRoles) {
-        getDelegateForUpdate();
-        updated.removeDefaultRoles(defaultRoles);
 
     }
 
@@ -1039,7 +1008,7 @@ public class RealmAdapter implements CachedRealmModel {
 
     @Override
     public ClientModel getMasterAdminClient() {
-        return cached.getMasterAdminClient()==null ? null : cacheSession.getRealm(Config.getAdminRealm()).getClientById(cached.getMasterAdminClient());
+        return cached.getMasterAdminClient()==null ? null : cacheSession.getRealmByName(Config.getAdminRealm()).getClientById(cached.getMasterAdminClient());
     }
 
     @Override
@@ -1056,6 +1025,7 @@ public class RealmAdapter implements CachedRealmModel {
 
     @Override
     public RoleModel getDefaultRole() {
+        if (isUpdated()) return updated.getDefaultRole();
         return cached.getDefaultRoleId() == null ? null : cacheSession.getRoleById(this, cached.getDefaultRoleId());
     }
 
@@ -1477,11 +1447,6 @@ public class RealmAdapter implements CachedRealmModel {
     }
 
     @Override
-    public Stream<GroupModel> searchForGroupByNameStream(String search, Integer first, Integer max) {
-        return cacheSession.searchForGroupByNameStream(this, search, first, max);
-    }
-
-    @Override
     public boolean removeGroup(GroupModel group) {
         return cacheSession.removeGroup(this, group);
     }
@@ -1489,13 +1454,7 @@ public class RealmAdapter implements CachedRealmModel {
     @Override
     public Stream<ClientScopeModel> getClientScopesStream() {
         if (isUpdated()) return updated.getClientScopesStream();
-        return cached.getClientScopes().stream().map(scope -> {
-            ClientScopeModel model = cacheSession.getClientScopeById(this, scope);
-            if (model == null) {
-                throw new IllegalStateException("Cached clientScope not found: " + scope);
-            }
-            return model;
-        });
+        return cacheSession.getClientScopesStream(this);
     }
 
     @Override
@@ -1566,7 +1525,7 @@ public class RealmAdapter implements CachedRealmModel {
         if (model == null) return;
         
         // if user cache is disabled this is null
-        UserCache userCache = session.userCache(); 
+        UserCache userCache = UserStorageUtil.userCache(session);
         if (userCache != null) {        
           // If not realm component, check to see if it is a user storage provider child component (i.e. LDAP mapper)
           if (model.getParentId() != null && !model.getParentId().equals(getId())) {

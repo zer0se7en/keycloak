@@ -16,7 +16,6 @@
 
 package org.keycloak.authentication.authenticators.browser;
 
-import com.webauthn4j.data.AuthenticationParameters;
 import com.webauthn4j.data.AuthenticationRequest;
 import com.webauthn4j.data.client.Origin;
 import com.webauthn4j.data.client.challenge.Challenge;
@@ -51,8 +50,8 @@ import org.keycloak.models.WebAuthnPolicy;
 import org.keycloak.models.credential.WebAuthnCredentialModel;
 import org.keycloak.sessions.AuthenticationSessionModel;
 
-import javax.ws.rs.core.MultivaluedMap;
-import javax.ws.rs.core.Response;
+import jakarta.ws.rs.core.MultivaluedMap;
+import jakarta.ws.rs.core.Response;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
@@ -159,8 +158,15 @@ public class WebAuthnAuthenticator implements Authenticator, CredentialValidator
         // existing User Handle means that the authenticator used Resident Key supported public key credential
         if (userHandle == null || userHandle.isEmpty()) {
             // Resident Key not supported public key credential was used
-            // so rely on the user that has already been authenticated
-            userId = context.getUser().getId();
+            // so rely on the user set in a previous step (if available)
+            if (context.getUser() != null) {
+                userId = context.getUser().getId();
+            }
+            else {
+                setErrorResponse(context, WEBAUTHN_ERROR_USER_NOT_FOUND,
+                        "Webauthn credential provided doesn't include user id and user id wasn't provided in a previous step");
+                return;
+            }
         } else {
             // decode using the same charset as it has been encoded (see: WebAuthnRegister.java)
             userId = new String(Base64Url.decode(userHandle), StandardCharsets.UTF_8);
@@ -196,9 +202,8 @@ public class WebAuthnAuthenticator implements Authenticator, CredentialValidator
                 signature
                 );
 
-        AuthenticationParameters authenticationParameters = new AuthenticationParameters(
+        WebAuthnCredentialModelInput.KeycloakWebAuthnAuthenticationParameters authenticationParameters = new WebAuthnCredentialModelInput.KeycloakWebAuthnAuthenticationParameters(
                 server,
-                null, // here authenticator cannot be fetched, set it afterwards in WebAuthnCredentialProvider.isValid()
                 isUVFlagChecked
                 );
 
@@ -209,7 +214,7 @@ public class WebAuthnAuthenticator implements Authenticator, CredentialValidator
 
         boolean result = false;
         try {
-            result = session.userCredentialManager().isValid(context.getRealm(), user, cred);
+            result = user.credentialManager().isValid(cred);
         } catch (WebAuthnException wae) {
             setErrorResponse(context, WEBAUTHN_ERROR_AUTH_VERIFICATION, wae.getMessage());
             return;
@@ -237,7 +242,7 @@ public class WebAuthnAuthenticator implements Authenticator, CredentialValidator
     }
 
     public boolean configuredFor(KeycloakSession session, RealmModel realm, UserModel user) {
-        return session.userCredentialManager().isConfiguredFor(realm, user, getCredentialType());
+        return user.credentialManager().isConfiguredFor(getCredentialType());
     }
 
     public void setRequiredActions(KeycloakSession session, RealmModel realm, UserModel user) {

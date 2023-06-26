@@ -25,7 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import javax.ws.rs.core.Response;
+import jakarta.ws.rs.core.Response;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -52,8 +52,12 @@ import org.keycloak.admin.client.resource.ClientsResource;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.jose.jws.JWSInput;
 import org.keycloak.models.UserSessionSpi;
-import org.keycloak.models.sessions.infinispan.InfinispanUserSessionProviderFactory;
+import org.keycloak.models.map.common.AbstractMapProviderFactory;
+import org.keycloak.models.map.storage.hotRod.HotRodMapStorageProviderFactory;
+import org.keycloak.models.map.storage.chm.ConcurrentHashMapStorageProviderFactory;
+import org.keycloak.models.map.userSession.MapUserSessionProviderFactory;
 import org.keycloak.models.utils.KeycloakModelUtils;
+import org.keycloak.protocol.oidc.OIDCConfigAttributes;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.common.util.Retry;
@@ -71,7 +75,9 @@ import org.apache.http.impl.client.BasicCookieStore;
 import org.hamcrest.Matchers;
 import org.keycloak.util.JsonSerialization;
 
+import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.equalTo;
 import static org.keycloak.testsuite.util.ServerURLs.AUTH_SERVER_SSL_REQUIRED;
 /**
  * @author <a href="mailto:vramik@redhat.com">Vlastislav Ramik</a>
@@ -86,7 +92,14 @@ public class ConcurrentLoginTest extends AbstractConcurrencyTest {
 
     @Before
     public void beforeTest() {
+        // userSessionProvider is used only to prevent tests from running in certain configs, should be removed once GHI #15410 is resolved.
         userSessionProvider = testingClient.server().fetch(session -> Config.getProvider(UserSessionSpi.NAME), String.class);
+        if (userSessionProvider.equals(MapUserSessionProviderFactory.PROVIDER_ID)) {
+            // append the storage provider in case of map
+            String mapStorageProvider = testingClient.server().fetch(session -> Config.scope(UserSessionSpi.NAME,
+                    MapUserSessionProviderFactory.PROVIDER_ID, AbstractMapProviderFactory.CONFIG_STORAGE).get("provider"), String.class);
+            if (mapStorageProvider != null) userSessionProvider = userSessionProvider + "-" + mapStorageProvider;
+        }
         createClients();
     }
 
@@ -98,6 +111,7 @@ public class ConcurrentLoginTest extends AbstractConcurrencyTest {
               .directAccessGrants()
               .redirectUris("*")
               .addWebOrigin("*")
+              .attribute(OIDCConfigAttributes.POST_LOGOUT_REDIRECT_URIS, "+")
               .secret("password")
               .build();
 
@@ -112,9 +126,10 @@ public class ConcurrentLoginTest extends AbstractConcurrencyTest {
 
     @Test
     public void concurrentLoginSingleUser() throws Throwable {
-        Assume.assumeThat("Test runs only with InfinispanUserSessionProvider",
+        // remove this restriction once GHI #15410 is resolved.
+        Assume.assumeThat("Test does not work with ConcurrentHashMap storage",
                 userSessionProvider,
-                Matchers.is(InfinispanUserSessionProviderFactory.PROVIDER_ID));
+                not(equalTo(MapUserSessionProviderFactory.PROVIDER_ID + "-" + ConcurrentHashMapStorageProviderFactory.PROVIDER_ID)));
 
         log.info("*********************************************");
         long start = System.currentTimeMillis();
@@ -180,9 +195,10 @@ public class ConcurrentLoginTest extends AbstractConcurrencyTest {
 
     @Test
     public void concurrentLoginMultipleUsers() throws Throwable {
-        Assume.assumeThat("Test runs only with InfinispanUserSessionProvider",
+        // remove this restriction once GHI #15410 is resolved.
+        Assume.assumeThat("Test does not work with ConcurrentHashMap storage",
                 userSessionProvider,
-                Matchers.is(InfinispanUserSessionProviderFactory.PROVIDER_ID));
+                not(equalTo(MapUserSessionProviderFactory.PROVIDER_ID + "-" + ConcurrentHashMapStorageProviderFactory.PROVIDER_ID)));
 
         log.info("*********************************************");
         long start = System.currentTimeMillis();
@@ -222,6 +238,7 @@ public class ConcurrentLoginTest extends AbstractConcurrencyTest {
 
             OAuthClient.AuthorizationEndpointResponse resp = oauth1.doLogin("test-user@localhost", "password");
             String code = resp.getCode();
+            String idTokenHint = oauth1.doAccessTokenRequest(code, "password").getIdToken();
             Assert.assertNotNull(code);
             String codeURL = driver.getCurrentUrl();
 
@@ -247,11 +264,11 @@ public class ConcurrentLoginTest extends AbstractConcurrencyTest {
 
             run(DEFAULT_THREADS, DEFAULT_THREADS, codeToTokenTask);
 
-            oauth1.openLogout();
+            oauth1.idTokenHint(idTokenHint).openLogout();
 
             // Code should be successfully exchanged for the token at max once. In some cases (EG. Cross-DC) it may not be even successfully exchanged
-            Assert.assertThat(codeToTokenSuccessCount.get(), Matchers.lessThanOrEqualTo(1));
-            Assert.assertThat(codeToTokenErrorsCount.get(), Matchers.greaterThanOrEqualTo(DEFAULT_THREADS - 1));
+            Assert.assertThat(codeToTokenSuccessCount.get(), Matchers.lessThanOrEqualTo(0));
+            Assert.assertThat(codeToTokenErrorsCount.get(), Matchers.greaterThanOrEqualTo(DEFAULT_THREADS));
 
             log.infof("Iteration %d passed successfully", i);
         }

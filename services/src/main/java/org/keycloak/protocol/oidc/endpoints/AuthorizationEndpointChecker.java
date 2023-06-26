@@ -21,8 +21,8 @@ package org.keycloak.protocol.oidc.endpoints;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import javax.ws.rs.core.MultivaluedMap;
-import javax.ws.rs.core.Response;
+import jakarta.ws.rs.core.MultivaluedMap;
+import jakarta.ws.rs.core.Response;
 
 import org.jboss.logging.Logger;
 import org.keycloak.OAuth2Constants;
@@ -193,6 +193,10 @@ public class AuthorizationEndpointChecker {
         }
     }
 
+    public boolean isInvalidResponseType(AuthorizationEndpointChecker.AuthorizationCheckException ex) {
+        return "Missing parameter: response_type".equals(ex.getErrorDescription()) || OAuthErrorException.UNSUPPORTED_RESPONSE_TYPE.equals(ex.getError());
+    }
+
     public void checkInvalidRequestMessage() throws AuthorizationCheckException {
         if (request.getInvalidRequestMessage() != null) {
             event.error(Errors.INVALID_REQUEST);
@@ -227,7 +231,7 @@ public class AuthorizationEndpointChecker {
             return;
         }
 
-        if (parsedResponseType.isImplicitOrHybridFlow() && request.getNonce() == null) {
+        if (parsedResponseType.hasResponseType(OIDCResponseType.ID_TOKEN) && request.getNonce() == null) {
             ServicesLogger.LOGGER.missingParameter(OIDCLoginProtocol.NONCE_PARAM);
             event.error(Errors.INVALID_REQUEST);
             throw new AuthorizationCheckException(Response.Status.BAD_REQUEST, OAuthErrorException.INVALID_REQUEST, "Missing parameter: nonce");

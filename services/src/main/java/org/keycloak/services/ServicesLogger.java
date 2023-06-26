@@ -462,4 +462,13 @@ public interface ServicesLogger extends BasicLogger {
     @LogMessage(level = ERROR)
     @Message(id=105, value="Response_mode 'query.jwt' is allowed only when the authorization response token is encrypted")
     void responseModeQueryJwtNotAllowed();
+
+    @LogMessage(level = INFO)
+    @Message(id=106, value="Created script engine '%s', version '%s' for the mime type '%s'")
+    @Once
+    void scriptEngineCreated(String engineName, String engineVersion, String mimeType);
+
+    @LogMessage(level = DEBUG)
+    @Message(id=107, value="Skipping create admin user. Admin already exists in realm '%s'.")
+    void addAdminUserFailedAdminExists(String realm);
 }

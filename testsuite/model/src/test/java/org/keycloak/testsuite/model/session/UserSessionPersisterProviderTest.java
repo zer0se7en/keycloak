@@ -77,7 +77,7 @@ public class UserSessionPersisterProviderTest extends KeycloakModelTest {
 
     @Override
     public void createEnvironment(KeycloakSession s) {
-        RealmModel realm = s.realms().createRealm("test");
+        RealmModel realm = createRealm(s, "test");
         realm.setOfflineSessionIdleTimeout(Constants.DEFAULT_OFFLINE_SESSION_IDLE_TIMEOUT);
         realm.setOfflineSessionMaxLifespan(Constants.DEFAULT_OFFLINE_SESSION_MAX_LIFESPAN);
         realm.setDefaultRole(s.roles().addRealmRole(realm, Constants.DEFAULT_ROLES_ROLE_PREFIX + "-" + realm.getName()));
@@ -253,13 +253,13 @@ public class UserSessionPersisterProviderTest extends KeycloakModelTest {
         AtomicReference<String> userSessionID = new AtomicReference<>();
 
         inComittedTransaction(session -> {
-            RealmModel fooRealm = session.realms().createRealm("foo", "foo");
+            RealmModel fooRealm = session.realms().createRealm("foo");
             fooRealm.setDefaultRole(session.roles().addRealmRole(fooRealm, Constants.DEFAULT_ROLES_ROLE_PREFIX + "-" + fooRealm.getName()));
 
             fooRealm.addClient("foo-app");
             session.users().addUser(fooRealm, "user3");
 
-            UserSessionModel userSession = session.sessions().createUserSession(fooRealm, session.users().getUserByUsername(fooRealm, "user3"), "user3", "127.0.0.1", "form", true, null, null);
+            UserSessionModel userSession = session.sessions().createUserSession(null, fooRealm, session.users().getUserByUsername(fooRealm, "user3"), "user3", "127.0.0.1", "form", true, null, null, UserSessionModel.SessionPersistenceState.PERSISTENT);
             userSessionID.set(userSession.getId());
 
             createClientSession(session, realmId, fooRealm.getClientByClientId("foo-app"), userSession, "http://redirect", "state");
@@ -267,7 +267,7 @@ public class UserSessionPersisterProviderTest extends KeycloakModelTest {
 
         inComittedTransaction(session -> {
             // Persist offline session
-            RealmModel fooRealm = session.realms().getRealm("foo");
+            RealmModel fooRealm = session.realms().getRealmByName("foo");
             UserSessionModel userSession = session.sessions().getUserSession(fooRealm, userSessionID.get());
             persistUserSession(session, userSession, true);
         });
@@ -278,7 +278,7 @@ public class UserSessionPersisterProviderTest extends KeycloakModelTest {
 
             // Remove realm
             RealmManager realmMgr = new RealmManager(session);
-            realmMgr.removeRealm(realmMgr.getRealm("foo"));
+            realmMgr.removeRealm(realmMgr.getRealmByName("foo"));
         });
 
         inComittedTransaction(session -> {
@@ -293,14 +293,14 @@ public class UserSessionPersisterProviderTest extends KeycloakModelTest {
         AtomicReference<String> userSessionID = new AtomicReference<>();
 
         inComittedTransaction(session -> {
-            RealmModel fooRealm = session.realms().createRealm("foo", "foo");
+            RealmModel fooRealm = session.realms().createRealm("foo");
             fooRealm.setDefaultRole(session.roles().addRealmRole(fooRealm, Constants.DEFAULT_ROLES_ROLE_PREFIX));
 
             fooRealm.addClient("foo-app");
             fooRealm.addClient("bar-app");
             session.users().addUser(fooRealm, "user3");
 
-            UserSessionModel userSession = session.sessions().createUserSession(fooRealm, session.users().getUserByUsername(fooRealm, "user3"), "user3", "127.0.0.1", "form", true, null, null);
+            UserSessionModel userSession = session.sessions().createUserSession(null, fooRealm, session.users().getUserByUsername(fooRealm, "user3"), "user3", "127.0.0.1", "form", true, null, null, UserSessionModel.SessionPersistenceState.PERSISTENT);
             userSessionID.set(userSession.getId());
 
             createClientSession(session, realmId, fooRealm.getClientByClientId("foo-app"), userSession, "http://redirect", "state");
@@ -308,7 +308,7 @@ public class UserSessionPersisterProviderTest extends KeycloakModelTest {
         });
 
         inComittedTransaction(session -> {
-            RealmModel fooRealm = session.realms().getRealm("foo");
+            RealmModel fooRealm = session.realms().getRealmByName("foo");
 
             // Persist offline session
             UserSessionModel userSession = session.sessions().getUserSession(fooRealm, userSessionID.get());
@@ -318,7 +318,7 @@ public class UserSessionPersisterProviderTest extends KeycloakModelTest {
         inComittedTransaction(session -> {
             RealmManager realmMgr = new RealmManager(session);
             ClientManager clientMgr = new ClientManager(realmMgr);
-            RealmModel fooRealm = realmMgr.getRealm("foo");
+            RealmModel fooRealm = realmMgr.getRealmByName("foo");
 
             // Assert session was persisted with both clientSessions
             UserSessionModel persistedSession = loadPersistedSessionsPaginated(session, true, 10, 1, 1).get(0);
@@ -332,7 +332,7 @@ public class UserSessionPersisterProviderTest extends KeycloakModelTest {
         inComittedTransaction(session -> {
             RealmManager realmMgr = new RealmManager(session);
             ClientManager clientMgr = new ClientManager(realmMgr);
-            RealmModel fooRealm = realmMgr.getRealm("foo");
+            RealmModel fooRealm = realmMgr.getRealmByName("foo");
 
             // Assert just one bar-app clientSession persisted now
             UserSessionModel persistedSession = loadPersistedSessionsPaginated(session, true, 10, 1, 1).get(0);
@@ -349,7 +349,7 @@ public class UserSessionPersisterProviderTest extends KeycloakModelTest {
 
             // Cleanup
             RealmManager realmMgr = new RealmManager(session);
-            realmMgr.removeRealm(realmMgr.getRealm("foo"));
+            realmMgr.removeRealm(realmMgr.getRealmByName("foo"));
         });
     }
 
@@ -432,9 +432,9 @@ public class UserSessionPersisterProviderTest extends KeycloakModelTest {
 
             for (int i = 0; i < USER_SESSION_COUNT; i++) {
                 // Having different offsets for each session (to ensure that lastSessionRefresh is also different)
-                Time.setOffset(i);
+                setTimeOffset(i);
 
-                UserSessionModel userSession = session.sessions().createUserSession(realm, user, "user1", "127.0.0.1", "form", true, null, null);
+                UserSessionModel userSession = session.sessions().createUserSession(null, realm, user, "user1", "127.0.0.1", "form", true, null, null, UserSessionModel.SessionPersistenceState.PERSISTENT);
                 createClientSession(session, realmId, realm.getClientByClientId("test-app"), userSession, "http://redirect", "state");
                 userSessionsInner.add(userSession.getId());
             }
@@ -464,6 +464,7 @@ public class UserSessionPersisterProviderTest extends KeycloakModelTest {
             }
             return null;
         });
+
     }
 
     @Test
@@ -495,7 +496,7 @@ public class UserSessionPersisterProviderTest extends KeycloakModelTest {
             persister.updateLastSessionRefreshes(realm, lastSessionRefresh, Collections.singleton(userSession1[0].getId()), true);
 
             // Increase time offset - 40 days
-            Time.setOffset(3456000);
+            setTimeOffset(3456000);
             try {
                 // Run expiration thread
                 persister.removeExpired(realm);
@@ -507,7 +508,7 @@ public class UserSessionPersisterProviderTest extends KeycloakModelTest {
 
             } finally {
                 // Cleanup
-                Time.setOffset(0);
+                setTimeOffset(0);
                 session.getKeycloakSessionFactory().publish(new ResetTimeOffsetEvent());
             }
         });
@@ -527,7 +528,7 @@ public class UserSessionPersisterProviderTest extends KeycloakModelTest {
                 // Create session in infinispan
                 RealmModel realm = session.realms().getRealm(realmId);
 
-                UserSessionModel userSession = session.sessions().createUserSession(realm, session.users().getUserByUsername(realm, "user1"), "user1", "127.0.0.1", "form", true, null, null);
+                UserSessionModel userSession = session.sessions().createUserSession(null, realm, session.users().getUserByUsername(realm, "user1"), "user1", "127.0.0.1", "form", true, null, null, UserSessionModel.SessionPersistenceState.PERSISTENT);
                 createClientSession(session, realmId, realm.getClientByClientId("test-app"), userSession, "http://redirect", "state");
                 createClientSession(session, realmId, realm.getClientByClientId("external-storage-client"), userSession, "http://redirect", "state");
 
@@ -586,15 +587,15 @@ public class UserSessionPersisterProviderTest extends KeycloakModelTest {
     protected static UserSessionModel[] createSessions(KeycloakSession session, String realmId) {
         RealmModel realm = session.realms().getRealm(realmId);
         UserSessionModel[] sessions = new UserSessionModel[3];
-        sessions[0] = session.sessions().createUserSession(realm, session.users().getUserByUsername(realm, "user1"), "user1", "127.0.0.1", "form", true, null, null);
+        sessions[0] = session.sessions().createUserSession(null, realm, session.users().getUserByUsername(realm, "user1"), "user1", "127.0.0.1", "form", true, null, null, UserSessionModel.SessionPersistenceState.PERSISTENT);
 
         createClientSession(session, realmId, realm.getClientByClientId("test-app"), sessions[0], "http://redirect", "state");
         createClientSession(session, realmId, realm.getClientByClientId("third-party"), sessions[0], "http://redirect", "state");
 
-        sessions[1] = session.sessions().createUserSession(realm, session.users().getUserByUsername(realm, "user1"), "user1", "127.0.0.2", "form", true, null, null);
+        sessions[1] = session.sessions().createUserSession(null, realm, session.users().getUserByUsername(realm, "user1"), "user1", "127.0.0.2", "form", true, null, null, UserSessionModel.SessionPersistenceState.PERSISTENT);
         createClientSession(session, realmId, realm.getClientByClientId("test-app"), sessions[1], "http://redirect", "state");
 
-        sessions[2] = session.sessions().createUserSession(realm, session.users().getUserByUsername(realm, "user2"), "user2", "127.0.0.3", "form", true, null, null);
+        sessions[2] = session.sessions().createUserSession(null, realm, session.users().getUserByUsername(realm, "user2"), "user2", "127.0.0.3", "form", true, null, null, UserSessionModel.SessionPersistenceState.PERSISTENT);
         createClientSession(session, realmId, realm.getClientByClientId("test-app"), sessions[2], "http://redirect", "state");
 
         return sessions;

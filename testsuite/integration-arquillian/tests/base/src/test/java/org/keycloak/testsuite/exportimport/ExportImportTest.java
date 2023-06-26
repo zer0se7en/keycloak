@@ -24,12 +24,14 @@ import org.junit.After;
 import org.junit.Test;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.authentication.requiredactions.WebAuthnRegisterFactory;
+import org.keycloak.common.Profile.Feature;
 import org.keycloak.exportimport.ExportImportConfig;
 import org.keycloak.exportimport.Strategy;
 import org.keycloak.exportimport.dir.DirExportProvider;
 import org.keycloak.exportimport.dir.DirExportProviderFactory;
 import org.keycloak.exportimport.singlefile.SingleFileExportProviderFactory;
 import org.keycloak.models.UserModel;
+import org.keycloak.representations.idm.AuthenticationExecutionInfoRepresentation;
 import org.keycloak.representations.idm.ComponentRepresentation;
 import org.keycloak.representations.idm.KeysMetadataRepresentation;
 import org.keycloak.representations.idm.RealmEventsConfigRepresentation;
@@ -38,7 +40,7 @@ import org.keycloak.representations.idm.RequiredActionProviderRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.testsuite.AbstractKeycloakTest;
 import org.keycloak.testsuite.Assert;
-import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude;
+import org.keycloak.testsuite.ProfileAssume;
 import org.keycloak.testsuite.client.resources.TestingExportImportResource;
 import org.keycloak.testsuite.runonserver.RunHelpers;
 import org.keycloak.testsuite.util.UserBuilder;
@@ -60,7 +62,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.keycloak.testsuite.admin.AbstractAdminTest.loadJson;
-import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude.AuthServer;
+import org.junit.BeforeClass;
 
 /**
  *
@@ -68,8 +70,13 @@ import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude.A
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
  * @author Stan Silvert ssilvert@redhat.com (C) 2016 Red Hat Inc.
  */
-@AuthServerContainerExclude(AuthServer.REMOTE)
 public class ExportImportTest extends AbstractKeycloakTest {
+
+    @BeforeClass
+    public static void checkNotMapStorage() {
+        // Disabled temporarily, re-enable once export/import functionality is implemented for map storage
+        ProfileAssume.assumeFeatureDisabled(Feature.MAP_STORAGE);
+    }
 
     @Override
     public void addTestRealms(List<RealmRepresentation> testRealms) {
@@ -239,6 +246,12 @@ public class ExportImportTest extends AbstractKeycloakTest {
     }
 
     @Test
+    public void testImportWithNullAuthenticatorConfigAndNoDefaultBrowserFlow() {
+        importRealmFromFile("/import/testrealm-authenticator-config-null.json");
+        Assert.assertTrue("Imported realm hasn't been found!", isRealmPresent("cez"));
+    }
+
+    @Test
     public void testImportIgnoreExistingMissingClientId() {
         TestingExportImportResource resource = testingClient.testing().exportImport();
 
@@ -283,8 +296,8 @@ public class ExportImportTest extends AbstractKeycloakTest {
         }
     }
 
-    private boolean isRealmPresent(String realmId) {
-        return adminClient.realms().findAll().stream().anyMatch(realm -> realmId.equals(realm.getId()));
+    private boolean isRealmPresent(String realmName) {
+        return adminClient.realms().findAll().stream().anyMatch(realm -> realmName.equals(realm.getRealm()));
     }
 
     /*
@@ -363,6 +376,8 @@ public class ExportImportTest extends AbstractKeycloakTest {
         testingClient.testing().exportImport().setAction(ExportImportConfig.ACTION_EXPORT);
         testingClient.testing().exportImport().setRealmName("test");
 
+        String[] authFlowObjectIdsBeforeImport = getSomeAuthenticationFlowsObjectIds();
+
         testingClient.testing().exportImport().runExport();
 
         List<ComponentRepresentation> components = adminClient.realm("test").components().query();
@@ -406,6 +421,9 @@ public class ExportImportTest extends AbstractKeycloakTest {
         assertTrue(testRealmRealm.users().search("user-requiredWebAuthn").get(0)
                 .getRequiredActions().get(0).equals(WebAuthnRegisterFactory.PROVIDER_ID));
 
+        String[] authFlowObjectIdsAfterImport = getSomeAuthenticationFlowsObjectIds();
+        // Test that IDs of authentication-flows (both top level and nested) and authenticationConfiguration was preserved
+        Assert.assertArrayEquals(authFlowObjectIdsBeforeImport, authFlowObjectIdsAfterImport);
 
         List<ComponentRepresentation> componentsImported = adminClient.realm("test").components().query();
         assertComponents(components, componentsImported);
@@ -464,6 +482,25 @@ public class ExportImportTest extends AbstractKeycloakTest {
                 Assert.assertNames(eList, aList.toArray(new String[] {}));
             }
         }
+    }
+
+
+    // Get IDs of some objects (top authentication flow, nested authentication flow, authentication config) to be able to test if IDs are same after re-import
+    private String[] getSomeAuthenticationFlowsObjectIds() {
+        String firstBrokerLoginFlowID = adminClient.realm("test").flows().getFlows().stream()
+                .filter(flow -> "first broker login".equals(flow.getAlias()))
+                .findFirst().get().getId();
+
+        List<AuthenticationExecutionInfoRepresentation> authExecutions = adminClient.realm("test").flows().getExecutions("User creation or linking");
+        Assert.assertEquals("idp-create-user-if-unique", authExecutions.get(0).getProviderId());
+
+        String authConfigId = authExecutions.get(0).getAuthenticationConfig();
+        Assert.assertEquals("create unique user config", adminClient.realm("test").flows().getAuthenticatorConfig(authConfigId).getAlias());
+
+        String handleExistingAccountSubflowId = authExecutions.get(1).getFlowId();
+        Assert.assertEquals("Handle Existing Account", adminClient.realm("test").flows().getFlow(handleExistingAccountSubflowId).getAlias());
+
+        return new String[] {firstBrokerLoginFlowID, handleExistingAccountSubflowId, authConfigId };
     }
 
     private void clearExportImportProperties() {

@@ -19,9 +19,10 @@ package org.keycloak.protocol.oidc;
 
 import com.google.common.collect.Streams;
 import org.keycloak.OAuth2Constants;
-import org.keycloak.authentication.AuthenticatorUtil;
 import org.keycloak.authentication.ClientAuthenticator;
 import org.keycloak.authentication.ClientAuthenticatorFactory;
+import org.keycloak.authentication.authenticators.util.LoAUtil;
+import org.keycloak.common.Profile;
 import org.keycloak.crypto.CekManagementProvider;
 import org.keycloak.crypto.ClientSignatureVerifierProvider;
 import org.keycloak.crypto.ContentEncryptionProvider;
@@ -29,7 +30,6 @@ import org.keycloak.crypto.SignatureProvider;
 import org.keycloak.jose.jws.Algorithm;
 import org.keycloak.models.CibaConfig;
 import org.keycloak.models.ClientScopeModel;
-import org.keycloak.models.Constants;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.protocol.oidc.endpoints.AuthorizationEndpoint;
@@ -52,8 +52,8 @@ import org.keycloak.urls.UrlType;
 import org.keycloak.util.JsonSerialization;
 import org.keycloak.wellknown.WellKnownProvider;
 
-import javax.ws.rs.core.UriBuilder;
-import javax.ws.rs.core.UriInfo;
+import jakarta.ws.rs.core.UriBuilder;
+import jakarta.ws.rs.core.UriInfo;
 
 import java.net.URI;
 import java.util.AbstractMap;
@@ -63,7 +63,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -72,10 +71,7 @@ import java.util.stream.Stream;
  */
 public class OIDCWellKnownProvider implements WellKnownProvider {
 
-    public static final List<String> DEFAULT_GRANT_TYPES_SUPPORTED = list(OAuth2Constants.AUTHORIZATION_CODE,
-        OAuth2Constants.IMPLICIT, OAuth2Constants.REFRESH_TOKEN, OAuth2Constants.PASSWORD, OAuth2Constants.CLIENT_CREDENTIALS,
-        OAuth2Constants.DEVICE_CODE_GRANT_TYPE,
-        OAuth2Constants.CIBA_GRANT_TYPE);
+    public final List<String> DEFAULT_GRANT_TYPES_SUPPORTED;
 
     public static final List<String> DEFAULT_RESPONSE_TYPES_SUPPORTED = list(OAuth2Constants.CODE, OIDCResponseType.NONE, OIDCResponseType.ID_TOKEN, OIDCResponseType.TOKEN, "id_token token", "code id_token", "code token", "code id_token token");
 
@@ -102,6 +98,13 @@ public class OIDCWellKnownProvider implements WellKnownProvider {
     }
 
     public OIDCWellKnownProvider(KeycloakSession session, Map<String, Object> openidConfigOverride, boolean includeClientScopes) {
+        DEFAULT_GRANT_TYPES_SUPPORTED = Stream.of(OAuth2Constants.AUTHORIZATION_CODE,
+                OAuth2Constants.IMPLICIT, OAuth2Constants.REFRESH_TOKEN, OAuth2Constants.PASSWORD, OAuth2Constants.CLIENT_CREDENTIALS,
+                OAuth2Constants.DEVICE_CODE_GRANT_TYPE,
+                OAuth2Constants.CIBA_GRANT_TYPE).collect(Collectors.toList());
+        if (Profile.isFeatureEnabled(Profile.Feature.TOKEN_EXCHANGE)) {
+            DEFAULT_GRANT_TYPES_SUPPORTED.add(OAuth2Constants.TOKEN_EXCHANGE_GRANT_TYPE);
+        }
         this.session = session;
         this.openidConfigOverride = openidConfigOverride;
         this.includeClientScopes = includeClientScopes;
@@ -142,6 +145,8 @@ public class OIDCWellKnownProvider implements WellKnownProvider {
         config.setIdTokenEncryptionAlgValuesSupported(getSupportedEncryptionAlg(false));
         config.setIdTokenEncryptionEncValuesSupported(getSupportedEncryptionEnc(false));
         config.setUserInfoSigningAlgValuesSupported(getSupportedSigningAlgorithms(true));
+        config.setUserInfoEncryptionAlgValuesSupported(getSupportedEncryptionAlgorithms());
+        config.setUserInfoEncryptionEncValuesSupported(getSupportedContentEncryptionAlgorithms());
         config.setRequestObjectSigningAlgValuesSupported(getSupportedClientSigningAlgorithms(true));
         config.setRequestObjectEncryptionAlgValuesSupported(getSupportedEncryptionAlgorithms());
         config.setRequestObjectEncryptionEncValuesSupported(getSupportedContentEncryptionAlgorithms());
@@ -264,7 +269,7 @@ public class OIDCWellKnownProvider implements WellKnownProvider {
         List<String> result = new ArrayList<>(realmAcrLoaMap.keySet());
 
         // Add LoA levels configured in authentication flow in addition to the realm values
-        result.addAll(AuthenticatorUtil.getLoAConfiguredInRealmBrowserFlow(realm)
+        result.addAll(LoAUtil.getLoAConfiguredInRealmBrowserFlow(realm)
                 .map(String::valueOf)
                 .collect(Collectors.toList()));
         return result;

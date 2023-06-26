@@ -20,8 +20,10 @@ package org.keycloak.quarkus.runtime;
 import static org.keycloak.quarkus.runtime.Environment.getKeycloakModeFromProfile;
 import static org.keycloak.quarkus.runtime.Environment.isDevProfile;
 import static org.keycloak.quarkus.runtime.Environment.getProfileOrDefault;
+import static org.keycloak.quarkus.runtime.Environment.isImportExportMode;
 import static org.keycloak.quarkus.runtime.Environment.isTestLaunchMode;
 import static org.keycloak.quarkus.runtime.cli.Picocli.parseAndRun;
+import static org.keycloak.quarkus.runtime.cli.command.AbstractStartCommand.*;
 import static org.keycloak.quarkus.runtime.cli.command.Start.isDevProfileNotAllowed;
 
 import java.io.PrintWriter;
@@ -29,16 +31,22 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import javax.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.ApplicationScoped;
 
 import io.quarkus.runtime.ApplicationLifecycleManager;
 import io.quarkus.runtime.Quarkus;
 
 import org.jboss.logging.Logger;
+import org.keycloak.Config;
+import org.keycloak.models.KeycloakSessionFactory;
+import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.quarkus.runtime.cli.ExecutionExceptionHandler;
 import org.keycloak.quarkus.runtime.cli.Picocli;
 import org.keycloak.common.Version;
 import org.keycloak.quarkus.runtime.cli.command.Start;
+import org.keycloak.services.ServicesLogger;
+import org.keycloak.services.managers.ApplianceBootstrap;
+import org.keycloak.services.resources.KeycloakApplication;
 
 import io.quarkus.runtime.QuarkusApplication;
 import io.quarkus.runtime.annotations.QuarkusMain;
@@ -50,15 +58,18 @@ import io.quarkus.runtime.annotations.QuarkusMain;
 @ApplicationScoped
 public class KeycloakMain implements QuarkusApplication {
 
+    private static final String KEYCLOAK_ADMIN_ENV_VAR = "KEYCLOAK_ADMIN";
+    private static final String KEYCLOAK_ADMIN_PASSWORD_ENV_VAR = "KEYCLOAK_ADMIN_PASSWORD";
+
     public static void main(String[] args) {
-        System.setProperty("kc.version", Version.VERSION_KEYCLOAK);
+        System.setProperty("kc.version", Version.VERSION);
         List<String> cliArgs = Picocli.parseArgs(args);
 
         if (cliArgs.isEmpty()) {
             cliArgs = new ArrayList<>(cliArgs);
             // default to show help message
             cliArgs.add("-h");
-        } else if (cliArgs.contains(Start.NAME) && cliArgs.size() == 1) {
+        } else if (isFastStart(cliArgs)) {
             // fast path for starting the server without bootstrapping CLI
             ExecutionExceptionHandler errorHandler = new ExecutionExceptionHandler();
             PrintWriter errStream = new PrintWriter(System.err, true);
@@ -68,7 +79,7 @@ public class KeycloakMain implements QuarkusApplication {
                 return;
             }
 
-            start(errorHandler, errStream);
+            start(errorHandler, errStream, args);
 
             return;
         }
@@ -77,12 +88,13 @@ public class KeycloakMain implements QuarkusApplication {
         parseAndRun(cliArgs);
     }
 
-    public static void start(ExecutionExceptionHandler errorHandler, PrintWriter errStream) {
-        ClassLoader originalCl = Thread.currentThread().getContextClassLoader();
+    private static boolean isFastStart(List<String> cliArgs) {
+        // 'start --optimized' should start the server without parsing CLI
+        return cliArgs.size() == 2 && cliArgs.get(0).equals(Start.NAME) && cliArgs.stream().anyMatch(OPTIMIZED_BUILD_OPTION_LONG::equals);
+    }
 
+    public static void start(ExecutionExceptionHandler errorHandler, PrintWriter errStream, String[] args) {
         try {
-            Thread.currentThread().setContextClassLoader(new KeycloakClassLoader());
-
             Quarkus.run(KeycloakMain.class, (exitCode, cause) -> {
                 if (cause != null) {
                     errorHandler.error(errStream,
@@ -95,13 +107,12 @@ public class KeycloakMain implements QuarkusApplication {
                     // as we are replacing the default exit handler, we need to force exit
                     System.exit(exitCode);
                 }
-            });
+            }, args);
         } catch (Throwable cause) {
             errorHandler.error(errStream,
                     String.format("Unexpected error when starting the server in (%s) mode", getKeycloakModeFromProfile(getProfileOrDefault("prod"))),
                     cause.getCause());
-        } finally {
-            Thread.currentThread().setContextClassLoader(originalCl);
+            System.exit(1);
         }
     }
 
@@ -110,13 +121,17 @@ public class KeycloakMain implements QuarkusApplication {
      */
     @Override
     public int run(String... args) throws Exception {
+        if (!isImportExportMode()) {
+            createAdminUser();
+        }
+
         if (isDevProfile()) {
             Logger.getLogger(KeycloakMain.class).warnf("Running the server in development mode. DO NOT use this configuration in production.");
         }
 
         int exitCode = ApplicationLifecycleManager.getExitCode();
 
-        if (isTestLaunchMode()) {
+        if (isTestLaunchMode() || isImportExportMode()) {
             // in test mode we exit immediately
             // we should be managing this behavior more dynamically depending on the tests requirements (short/long lived)
             Quarkus.asyncExit(exitCode);
@@ -125,5 +140,25 @@ public class KeycloakMain implements QuarkusApplication {
         }
 
         return exitCode;
+    }
+
+    private void createAdminUser() {
+        String adminUserName = System.getenv(KEYCLOAK_ADMIN_ENV_VAR);
+        String adminPassword = System.getenv(KEYCLOAK_ADMIN_PASSWORD_ENV_VAR);
+
+        if ((adminUserName == null || adminUserName.trim().length() == 0)
+                || (adminPassword == null || adminPassword.trim().length() == 0)) {
+            return;
+        }
+
+        KeycloakSessionFactory sessionFactory = KeycloakApplication.getSessionFactory();
+
+        try {
+            KeycloakModelUtils.runJobInTransaction(sessionFactory, session -> {
+                new ApplianceBootstrap(session).createMasterRealmUser(adminUserName, adminPassword);
+            });
+        } catch (Throwable t) {
+            ServicesLogger.LOGGER.addUserFailed(t, adminUserName, Config.getAdminRealm());
+        }
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Red Hat, Inc. and/or its affiliates
+ * Copyright 2022 Red Hat, Inc. and/or its affiliates
  * and other contributors as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,29 +17,35 @@
 
 package org.keycloak.models.map.storage.hotRod.common;
 
-import org.infinispan.protostream.annotations.ProtoDoc;
+import org.infinispan.api.annotations.indexing.Basic;
+import org.infinispan.api.annotations.indexing.Indexed;
 import org.infinispan.protostream.annotations.ProtoField;
 
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
 
-@ProtoDoc("@Indexed")
+/**
+ * !!! Please do not change this class !!!
+ *
+ * If some change is needed please create a new version of this class and solve the migration on top-level entities.
+ *
+ */
+@Indexed
 public class HotRodAttributeEntity {
-    @ProtoDoc("@Field(index = Index.YES, store = Store.YES)")
+    @Basic(sortable = true)
     @ProtoField(number = 1)
     public String name;
 
-    @ProtoDoc("@Field(index = Index.YES, store = Store.YES)")
+    @Basic(sortable = true)
     @ProtoField(number = 2)
-    public List<String> values = new LinkedList<>();
+    public List<String> values;
 
     public HotRodAttributeEntity() {
     }
 
     public HotRodAttributeEntity(String name, List<String> values) {
         this.name = name;
-        this.values.addAll(values);
+        this.values = values;
     }
 
     public String getName() {

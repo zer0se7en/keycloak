@@ -32,7 +32,7 @@ import org.keycloak.testsuite.utils.arquillian.ContainerConstants;
 import org.openqa.selenium.By;
 import org.w3c.dom.Document;
 
-import javax.ws.rs.core.Response;
+import jakarta.ws.rs.core.Response;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -56,15 +56,11 @@ import static org.keycloak.testsuite.util.WaitUtils.waitUntilElement;
  */
 @AppServerContainer(ContainerConstants.APP_SERVER_UNDERTOW)
 @AppServerContainer(ContainerConstants.APP_SERVER_WILDFLY)
-@AppServerContainer(ContainerConstants.APP_SERVER_WILDFLY_DEPRECATED)
 @AppServerContainer(ContainerConstants.APP_SERVER_EAP)
 @AppServerContainer(ContainerConstants.APP_SERVER_EAP6)
 @AppServerContainer(ContainerConstants.APP_SERVER_EAP71)
-@AppServerContainer(ContainerConstants.APP_SERVER_TOMCAT7)
 @AppServerContainer(ContainerConstants.APP_SERVER_TOMCAT8)
 @AppServerContainer(ContainerConstants.APP_SERVER_TOMCAT9)
-@AppServerContainer(ContainerConstants.APP_SERVER_JETTY92)
-@AppServerContainer(ContainerConstants.APP_SERVER_JETTY93)
 @AppServerContainer(ContainerConstants.APP_SERVER_JETTY94)
 public class SAMLLoginResponseHandlingTest extends AbstractSAMLServletAdapterTest {
 
@@ -229,7 +225,7 @@ public class SAMLLoginResponseHandlingTest extends AbstractSAMLServletAdapterTes
 
                 try (Response response = protocolMappersResource.createMapper(mapper)) {
                     String createdId = getCreatedId(response);
-                    getCleanup().addCleanup((Runnable) () -> {
+                    getCleanup().addCleanup(() -> {
                         protocolMappersResource.delete(createdId);
                         mapper.setConfig(origConfig);
                         protocolMappersResource.createMapper(mapper).close();

@@ -27,9 +27,9 @@ import org.keycloak.models.UserSessionModel;
 import org.keycloak.provider.Provider;
 import org.keycloak.sessions.AuthenticationSessionModel;
 
-import javax.ws.rs.core.HttpHeaders;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriInfo;
+import jakarta.ws.rs.core.HttpHeaders;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.UriInfo;
 
 /**
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
@@ -82,7 +82,15 @@ public interface LoginProtocol extends Provider {
 
     Response backchannelLogout(UserSessionModel userSession, AuthenticatedClientSessionModel clientSession);
     Response frontchannelLogout(UserSessionModel userSession, AuthenticatedClientSessionModel clientSession);
-    Response finishLogout(UserSessionModel userSession);
+
+    /**
+     * This method is called when browser logout is going to be finished. It is not triggered during backchannel logout
+     *
+     * @param userSession user session, which was logged out
+     * @param logoutSession authentication session, which was used during logout to track the logout state
+     * @return response to be sent to the client
+     */
+    Response finishBrowserLogout(UserSessionModel userSession, AuthenticationSessionModel logoutSession);
 
     /**
      * @param userSession

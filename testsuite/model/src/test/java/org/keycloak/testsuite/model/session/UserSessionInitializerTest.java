@@ -66,7 +66,7 @@ public class UserSessionInitializerTest extends KeycloakModelTest {
 
     @Override
     public void createEnvironment(KeycloakSession s) {
-        RealmModel realm = s.realms().createRealm("test");
+        RealmModel realm = createRealm(s, "test");
         realm.setOfflineSessionIdleTimeout(Constants.DEFAULT_OFFLINE_SESSION_IDLE_TIMEOUT);
         realm.setDefaultRole(s.roles().addRealmRole(realm, Constants.DEFAULT_ROLES_ROLE_PREFIX + "-" + realm.getName()));
         realm.setSsoSessionIdleTimeout(1800);
@@ -165,13 +165,13 @@ public class UserSessionInitializerTest extends KeycloakModelTest {
 
         Optional<HotRodServerRule> hotRodServer = getParameters(HotRodServerRule.class).findFirst();
 
-        inIndependentFactories(4, 300, () -> {
+        inIndependentFactories(4, 60, () -> {
             synchronized (lock) {
                 if (index.incrementAndGet() == 1) {
                     // create a user session in the first node
                     UserSessionModel userSessionModel = withRealm(realmId, (session, realm) -> {
                         final UserModel user = session.users().getUserByUsername(realm, "user1");
-                        return session.sessions().createUserSession(realm, user, "un1", "ip1", "auth", false, null, null);
+                        return session.sessions().createUserSession(null, realm, user, "un1", "ip1", "auth", false, null, null, UserSessionModel.SessionPersistenceState.PERSISTENT);
                     });
                     userSessionId.set(userSessionModel.getId());
                 } else {
